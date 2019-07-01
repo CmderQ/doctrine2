@@ -10,6 +10,7 @@ use Doctrine\DBAL\Types\StringType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Annotation as ORM;
 use Doctrine\Tests\OrmFunctionalTestCase;
+use Exception;
 use function is_string;
 
 /**
@@ -31,10 +32,10 @@ class DDC2984Test extends OrmFunctionalTestCase
         try {
             $this->schemaTool->createSchema(
                 [
-                $this->em->getClassMetadata(DDC2984User::class),
+                    $this->em->getClassMetadata(DDC2984User::class),
                 ]
             );
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             // no action needed - schema seems to be already in place
         }
     }
@@ -157,15 +158,13 @@ class DDC2984DomainUserId
     }
 }
 
-/**
- * Class DDC2984UserIdCustomDbalType
- */
 class DDC2984UserIdCustomDbalType extends StringType
 {
     public function getName()
     {
         return 'ddc2984_domain_user_id';
     }
+
     /**
      * {@inheritDoc}
      */

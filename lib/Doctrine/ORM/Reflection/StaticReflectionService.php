@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Reflection;
 
+use ReflectionClass;
+use ReflectionProperty;
 use function strpos;
 use function strrev;
 use function strrpos;
@@ -30,6 +32,7 @@ class StaticReflectionService implements ReflectionService
         if (strpos($className, '\\') !== false) {
             $className = substr($className, strrpos($className, '\\')+1);
         }
+
         return $className;
     }
 
@@ -50,7 +53,7 @@ class StaticReflectionService implements ReflectionService
     /**
      * {@inheritDoc}
      */
-    public function getClass(string $className) : ?\ReflectionClass
+    public function getClass(string $className) : ?ReflectionClass
     {
         return null;
     }
@@ -58,7 +61,7 @@ class StaticReflectionService implements ReflectionService
     /**
      * {@inheritDoc}
      */
-    public function getAccessibleProperty(string $className, string $propertyName) : ?\ReflectionProperty
+    public function getAccessibleProperty(string $className, string $propertyName) : ?ReflectionProperty
     {
         return null;
     }

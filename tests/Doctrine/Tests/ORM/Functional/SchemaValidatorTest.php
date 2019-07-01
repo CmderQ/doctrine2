@@ -32,9 +32,7 @@ class SchemaValidatorTest extends OrmFunctionalTestCase
     }
 
     /**
-     *
      * @throws DBALException
-     *
      */
     private function registerType(string $className)
     {
@@ -42,6 +40,7 @@ class SchemaValidatorTest extends OrmFunctionalTestCase
 
         if (DBALType::hasType($type)) {
             DBALType::overrideType($type, $className);
+
             return;
         }
 

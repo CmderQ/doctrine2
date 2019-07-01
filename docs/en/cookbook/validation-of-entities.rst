@@ -79,8 +79,8 @@ In XML Mappings:
     <doctrine-mapping>
         <entity name="Order">
             <lifecycle-callbacks>
-                <lifecycle-callback type="prePersist" method="assertCustomerallowedBuying" />
-                <lifecycle-callback type="preUpdate" method="assertCustomerallowedBuying" />
+                <lifecycle-callback type="prePersist" method="assertCustomerAllowedBuying" />
+                <lifecycle-callback type="preUpdate" method="assertCustomerAllowedBuying" />
             </lifecycle-callbacks>
         </entity>
     </doctrine-mapping>
@@ -136,4 +136,4 @@ instances. This was already discussed in the previous blog post on
 the Versionable extension, which requires another type of event
 called "onFlush".
 
-Further readings: :doc:`Lifecycle Events <../reference/events>`
+Further readings: :ref:`reference-events-lifecycle-events`

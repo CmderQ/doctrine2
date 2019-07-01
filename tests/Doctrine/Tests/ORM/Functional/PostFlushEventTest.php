@@ -8,6 +8,7 @@ use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\Tests\Models\CMS\CmsUser;
 use Doctrine\Tests\OrmFunctionalTestCase;
+use Exception;
 
 /**
  * PostFlushEventTest
@@ -42,7 +43,7 @@ class PostFlushEventTest extends OrmFunctionalTestCase
 
         try {
             $this->em->flush();
-        } catch (\Exception $ex) {
+        } catch (Exception $ex) {
             $exceptionRaised = true;
         }
 
@@ -66,6 +67,7 @@ class PostFlushEventTest extends OrmFunctionalTestCase
         $user           = new CmsUser();
         $user->username = 'dfreudenberger';
         $user->name     = 'Daniel Freudenberger';
+
         return $user;
     }
 }

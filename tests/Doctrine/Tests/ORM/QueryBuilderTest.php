@@ -7,27 +7,27 @@ namespace Doctrine\Tests\ORM;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Criteria;
 use Doctrine\ORM\Cache;
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\Parameter;
 use Doctrine\ORM\Query\ParameterTypeInferer;
 use Doctrine\ORM\QueryBuilder;
+use Doctrine\Tests\Mocks\EntityManagerMock;
 use Doctrine\Tests\Models\Cache\State;
 use Doctrine\Tests\Models\CMS\CmsArticle;
 use Doctrine\Tests\Models\CMS\CmsGroup;
 use Doctrine\Tests\Models\CMS\CmsUser;
 use Doctrine\Tests\OrmTestCase;
+use InvalidArgumentException;
 use function array_filter;
 use function get_class;
 
 /**
  * Test case for the QueryBuilder class used to build DQL query string in a
  * object oriented way.
- *
  */
 class QueryBuilderTest extends OrmTestCase
 {
-    /** @var EntityManagerInterface */
+    /** @var EntityManagerMock */
     private $em;
 
     protected function setUp() : void
@@ -609,8 +609,11 @@ class QueryBuilderTest extends OrmTestCase
             ->setParameter('id', 1);
 
         $parameter = new Parameter('id', 1, ParameterTypeInferer::inferType(1));
+        $inferred  = $qb->getParameter('id');
 
-        self::assertEquals($parameter, $qb->getParameter('id'));
+        self::assertSame($parameter->getValue(), $inferred->getValue());
+        self::assertSame($parameter->getType(), $inferred->getType());
+        self::assertFalse($inferred->typeWasSpecified());
     }
 
     public function testSetParameters() : void
@@ -628,7 +631,6 @@ class QueryBuilderTest extends OrmTestCase
 
         self::assertEquals($parameters, $qb->getQuery()->getParameters());
     }
-
 
     public function testGetParameters() : void
     {
@@ -789,7 +791,7 @@ class QueryBuilderTest extends OrmTestCase
     public function testGetEntityManager() : void
     {
         $qb = $this->em->createQueryBuilder();
-        self::assertEquals($this->em, $qb->getEntityManager());
+        self::assertEquals($this->em->getWrappedEntityManager(), $qb->getEntityManager());
     }
 
     public function testInitialStateIsClean() : void
@@ -942,7 +944,6 @@ class QueryBuilderTest extends OrmTestCase
         self::assertSame('value3', $qb->getParameter('alias2_field_2')->getValue());
     }
 
-
     /**
      * @group DDC-1933
      */
@@ -1066,13 +1067,12 @@ class QueryBuilderTest extends OrmTestCase
      */
     public function testWhereAppend() : void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Using \$append = true does not have an effect with 'where' or 'having' parts. See QueryBuilder#andWhere() for an example for correct usage.");
 
         $qb = $this->em->createQueryBuilder()
             ->add('where', 'u.foo = ?1')
-            ->add('where', 'u.bar = ?2', true)
-        ;
+            ->add('where', 'u.bar = ?2', true);
     }
 
     public function testSecondLevelCacheQueryBuilderOptions() : void

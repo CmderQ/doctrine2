@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Persisters\Collection;
 
+use BadMethodCallException;
 use Doctrine\Common\Collections\Criteria;
 use Doctrine\DBAL\DBALException;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -72,8 +73,8 @@ class ManyToManyPersister extends AbstractCollectionPersister
             return; // ignore inverse side
         }
 
-        list($deleteSql, $deleteTypes) = $this->getDeleteRowSQL($collection);
-        list($insertSql, $insertTypes) = $this->getInsertRowSQL($collection);
+        [$deleteSql, $deleteTypes] = $this->getDeleteRowSQL($collection);
+        [$insertSql, $insertTypes] = $this->getInsertRowSQL($collection);
 
         foreach ($collection->getDeleteDiff() as $element) {
             $this->conn->executeUpdate(
@@ -100,14 +101,13 @@ class ManyToManyPersister extends AbstractCollectionPersister
         $association = $collection->getMapping();
 
         if (! ($association instanceof ToManyAssociationMetadata && $association->getIndexedBy())) {
-            throw new \BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
+            throw new BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
         }
 
         $persister = $this->uow->getEntityPersister($association->getTargetEntity());
         $mappedKey = $association->isOwningSide()
             ? $association->getInversedBy()
-            : $association->getMappedBy()
-        ;
+            : $association->getMappedBy();
 
         $criteria = [
             $mappedKey                   => $collection->getOwner(),
@@ -131,15 +131,13 @@ class ManyToManyPersister extends AbstractCollectionPersister
         $targetClass       = $this->em->getClassMetadata($association->getTargetEntity());
         $owningAssociation = ! $association->isOwningSide()
             ? $targetClass->getProperty($association->getMappedBy())
-            : $association
-        ;
+            : $association;
 
         $joinTable     = $owningAssociation->getJoinTable();
         $joinTableName = $joinTable->getQuotedQualifiedName($this->platform);
         $joinColumns   = $association->isOwningSide()
             ? $joinTable->getJoinColumns()
-            : $joinTable->getInverseJoinColumns()
-        ;
+            : $joinTable->getInverseJoinColumns();
 
         foreach ($joinColumns as $joinColumn) {
             /** @var JoinColumnMetadata $joinColumn */
@@ -155,7 +153,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
             $types[]      = $joinColumn->getType();
         }
 
-        list($joinTargetEntitySQL, $filterSql) = $this->getFilterSql($association);
+        [$joinTargetEntitySQL, $filterSql] = $this->getFilterSql($association);
 
         if ($filterSql) {
             $conditions[] = $filterSql;
@@ -195,6 +193,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
 
         return $persister->getManyToManyCollection($association, $collection->getOwner(), $offset, $length);
     }
+
     /**
      * {@inheritdoc}
      */
@@ -203,10 +202,10 @@ class ManyToManyPersister extends AbstractCollectionPersister
         $association = $collection->getMapping();
 
         if (! ($association instanceof ToManyAssociationMetadata && $association->getIndexedBy())) {
-            throw new \BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
+            throw new BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
         }
 
-        list($quotedJoinTable, $whereClauses, $params, $types) = $this->getJoinTableRestrictionsWithKey($collection, $key, true);
+        [$quotedJoinTable, $whereClauses, $params, $types] = $this->getJoinTableRestrictionsWithKey($collection, $key, true);
 
         $sql = 'SELECT 1 FROM ' . $quotedJoinTable . ' WHERE ' . implode(' AND ', $whereClauses);
 
@@ -222,7 +221,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
             return false;
         }
 
-        list($quotedJoinTable, $whereClauses, $params, $types) = $this->getJoinTableRestrictions($collection, $element, true);
+        [$quotedJoinTable, $whereClauses, $params, $types] = $this->getJoinTableRestrictions($collection, $element, true);
 
         $sql = 'SELECT 1 FROM ' . $quotedJoinTable . ' WHERE ' . implode(' AND ', $whereClauses);
 
@@ -238,7 +237,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
             return false;
         }
 
-        list($quotedJoinTable, $whereClauses, $params, $types) = $this->getJoinTableRestrictions($collection, $element, false);
+        [$quotedJoinTable, $whereClauses, $params, $types] = $this->getJoinTableRestrictions($collection, $element, false);
 
         $sql = 'DELETE FROM ' . $quotedJoinTable . ' WHERE ' . implode(' AND ', $whereClauses);
 
@@ -371,8 +370,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
 
         return isset($filterClauses[1])
             ? '(' . $filterSql . ')'
-            : $filterSql
-        ;
+            : $filterSql;
     }
 
     /**
@@ -390,8 +388,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
         $joinTable   = $owningAssociation->getJoinTable();
         $joinColumns = $association->isOwningSide()
             ? $joinTable->getInverseJoinColumns()
-            : $joinTable->getJoinColumns()
-        ;
+            : $joinTable->getJoinColumns();
 
         $conditions = [];
 
@@ -671,7 +668,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
             $indexByProperty  = $targetClass->getProperty($indexBy);
 
             switch (true) {
-                case ($indexByProperty instanceof FieldMetadata):
+                case $indexByProperty instanceof FieldMetadata:
                     $quotedColumnName = $this->platform->quoteIdentifier($indexByProperty->getColumnName());
 
                     $whereClauses[] = sprintf('tr.%s = ?', $quotedColumnName);
@@ -679,7 +676,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
                     $types[]        = $indexByProperty->getType();
                     break;
 
-                case ($indexByProperty instanceof ToOneAssociationMetadata && $indexByProperty->isOwningSide()):
+                case $indexByProperty instanceof ToOneAssociationMetadata && $indexByProperty->isOwningSide():
                     // Cannot be supported because PHP does not accept objects as keys. =(
                     break;
             }
@@ -716,7 +713,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
         }
 
         if ($addFilters) {
-            list($joinTargetEntitySQL, $filterSql) = $this->getFilterSql($association);
+            [$joinTargetEntitySQL, $filterSql] = $this->getFilterSql($association);
 
             if ($filterSql) {
                 $quotedJoinTable .= ' ' . $joinTargetEntitySQL;
@@ -794,7 +791,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
         if ($addFilters) {
             $quotedJoinTable .= ' t';
 
-            list($joinTargetEntitySQL, $filterSql) = $this->getFilterSql($association);
+            [$joinTargetEntitySQL, $filterSql] = $this->getFilterSql($association);
 
             if ($filterSql) {
                 $quotedJoinTable .= ' ' . $joinTargetEntitySQL;
@@ -823,7 +820,7 @@ class ManyToManyPersister extends AbstractCollectionPersister
 
         $valueVisitor->dispatch($expression);
 
-        list(, $types) = $valueVisitor->getParamsAndTypes();
+        [, $types] = $valueVisitor->getParamsAndTypes();
 
         return $types;
     }
@@ -847,11 +844,13 @@ class ManyToManyPersister extends AbstractCollectionPersister
 
             return ' ORDER BY ' . implode(', ', $orderBy);
         }
+
         return '';
     }
 
     /**
      * @return string
+     *
      * @throws DBALException
      */
     private function getLimitSql(Criteria $criteria)
@@ -859,8 +858,9 @@ class ManyToManyPersister extends AbstractCollectionPersister
         $limit  = $criteria->getMaxResults();
         $offset = $criteria->getFirstResult();
         if ($limit !== null || $offset !== null) {
-            return $this->platform->modifyLimitQuery('', $limit, $offset);
+            return $this->platform->modifyLimitQuery('', $limit, $offset ?? 0);
         }
+
         return '';
     }
 }

@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Mapping;
 
+use Doctrine\Common\Cache\Cache;
 use Doctrine\Common\EventManager;
+use Doctrine\Common\Persistence\Mapping\ClassMetadataFactory as PersistenceClassMetadataFactory;
+use Doctrine\Common\Persistence\Mapping\MappingException as PersistenceMappingException;
+use Doctrine\Common\Persistence\Mapping\MappingException as CommonMappingException;
 use Doctrine\DBAL\Platforms;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\ORM\EntityManagerInterface;
@@ -12,34 +16,44 @@ use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Event\OnClassMetadataNotFoundEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Exception\ORMException;
-use Doctrine\ORM\Mapping\Exception\InvalidCustomGenerator;
 use Doctrine\ORM\Mapping\Exception\TableGeneratorNotImplementedYet;
 use Doctrine\ORM\Mapping\Exception\UnknownGeneratorType;
-use Doctrine\ORM\Sequencing;
-use Doctrine\ORM\Sequencing\Planning\AssociationValueGeneratorExecutor;
-use Doctrine\ORM\Sequencing\Planning\ColumnValueGeneratorExecutor;
+use Doctrine\ORM\Reflection\ReflectionService;
+use Doctrine\ORM\Reflection\RuntimeReflectionService;
 use Doctrine\ORM\Sequencing\Planning\CompositeValueGenerationPlan;
 use Doctrine\ORM\Sequencing\Planning\NoopValueGenerationPlan;
 use Doctrine\ORM\Sequencing\Planning\SingleValueGenerationPlan;
 use Doctrine\ORM\Sequencing\Planning\ValueGenerationExecutor;
+use Doctrine\ORM\Utility\StaticClassNameConverter;
+use InvalidArgumentException;
 use ReflectionException;
 use function array_map;
-use function class_exists;
+use function array_reverse;
 use function count;
-use function end;
-use function explode;
-use function is_subclass_of;
+use function in_array;
+use function reset;
 use function sprintf;
-use function strpos;
-use function strtolower;
 
 /**
  * The ClassMetadataFactory is used to create ClassMetadata objects that contain all the
  * metadata mapping information of a class which describes how a class should be mapped
  * to a relational database.
  */
-class ClassMetadataFactory extends AbstractClassMetadataFactory
+class ClassMetadataFactory implements PersistenceClassMetadataFactory
 {
+    /**
+     * Salt used by specific Object Manager implementation.
+     *
+     * @var string
+     */
+    protected $cacheSalt = '$CLASSMETADATA';
+
+    /** @var bool */
+    protected $initialized = false;
+
+    /** @var ReflectionService|null */
+    protected $reflectionService;
+
     /** @var EntityManagerInterface|null */
     private $em;
 
@@ -52,21 +66,131 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
     /** @var EventManager */
     private $evm;
 
+    /** @var Cache|null */
+    private $cacheDriver;
+
+    /** @var ClassMetadata[] */
+    private $loadedMetadata = [];
+
     /**
-     * {@inheritdoc}
+     * Sets the entity manager used to build ClassMetadata instances.
      */
-    protected function loadMetadata(string $name, ClassMetadataBuildingContext $metadataBuildingContext) : array
-    {
-        $loaded = parent::loadMetadata($name, $metadataBuildingContext);
-
-        array_map([$this, 'resolveDiscriminatorValue'], $loaded);
-
-        return $loaded;
-    }
-
     public function setEntityManager(EntityManagerInterface $em)
     {
         $this->em = $em;
+    }
+
+    /**
+     * Sets the cache driver used by the factory to cache ClassMetadata instances.
+     */
+    public function setCacheDriver(?Cache $cacheDriver = null) : void
+    {
+        $this->cacheDriver = $cacheDriver;
+    }
+
+    /**
+     * Gets the cache driver used by the factory to cache ClassMetadata instances.
+     */
+    public function getCacheDriver() : ?Cache
+    {
+        return $this->cacheDriver;
+    }
+
+    /**
+     * Returns an array of all the loaded metadata currently in memory.
+     *
+     * @return ClassMetadata[]
+     */
+    public function getLoadedMetadata() : array
+    {
+        return $this->loadedMetadata;
+    }
+
+    /**
+     * Sets the reflectionService.
+     */
+    public function setReflectionService(ReflectionService $reflectionService) : void
+    {
+        $this->reflectionService = $reflectionService;
+    }
+
+    /**
+     * Gets the reflection service associated with this metadata factory.
+     */
+    public function getReflectionService() : ReflectionService
+    {
+        if ($this->reflectionService === null) {
+            $this->reflectionService = new RuntimeReflectionService();
+        }
+
+        return $this->reflectionService;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function isTransient($className) : bool
+    {
+        if (! $this->initialized) {
+            $this->initialize();
+        }
+
+        $entityClassName = StaticClassNameConverter::getRealClass($className);
+
+        return $this->getDriver()->isTransient($entityClassName);
+    }
+
+    /**
+     * Checks whether the factory has the metadata for a class loaded already.
+     *
+     * @param string $className
+     *
+     * @return bool TRUE if the metadata of the class in question is already loaded, FALSE otherwise.
+     */
+    public function hasMetadataFor($className) : bool
+    {
+        return isset($this->loadedMetadata[$className]);
+    }
+
+    /**
+     * Sets the metadata descriptor for a specific class.
+     *
+     * NOTE: This is only useful in very special cases, like when generating proxy classes.
+     *
+     * @param string        $className
+     * @param ClassMetadata $class
+     */
+    public function setMetadataFor($className, $class) : void
+    {
+        $this->loadedMetadata[$className] = $class;
+    }
+
+    /**
+     * Forces the factory to load the metadata of all classes known to the underlying
+     * mapping driver.
+     *
+     * @return ClassMetadata[] The ClassMetadata instances of all mapped classes.
+     *
+     * @throws InvalidArgumentException
+     * @throws ReflectionException
+     * @throws MappingException
+     * @throws PersistenceMappingException
+     * @throws ORMException
+     */
+    public function getAllMetadata() : array
+    {
+        if (! $this->initialized) {
+            $this->initialize();
+        }
+
+        $driver   = $this->getDriver();
+        $metadata = [];
+
+        foreach ($driver->getAllClassNames() as $className) {
+            $metadata[] = $this->getMetadataFor($className);
+        }
+
+        return $metadata;
     }
 
     /**
@@ -79,6 +203,158 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
         $this->driver      = $this->em->getConfiguration()->getMetadataDriverImpl();
         $this->evm         = $this->em->getEventManager();
         $this->initialized = true;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDriver() : Driver\MappingDriver
+    {
+        return $this->driver;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function isEntity(ClassMetadata $class) : bool
+    {
+        return isset($class->isMappedSuperclass) && $class->isMappedSuperclass === false;
+    }
+
+    /**
+     * Gets the class metadata descriptor for a class.
+     *
+     * @param string $className The name of the class.
+     *
+     * @throws InvalidArgumentException
+     * @throws PersistenceMappingException
+     * @throws ORMException
+     */
+    public function getMetadataFor($className) : ClassMetadata
+    {
+        if (isset($this->loadedMetadata[$className])) {
+            return $this->loadedMetadata[$className];
+        }
+
+        $entityClassName = StaticClassNameConverter::getRealClass($className);
+
+        if (isset($this->loadedMetadata[$entityClassName])) {
+            // We do not have the alias name in the map, include it
+            return $this->loadedMetadata[$className] = $this->loadedMetadata[$entityClassName];
+        }
+
+        $metadataBuildingContext = $this->newClassMetadataBuildingContext();
+        $loadingException        = null;
+
+        try {
+            if ($this->cacheDriver) {
+                $cached = $this->cacheDriver->fetch($entityClassName . $this->cacheSalt);
+
+                if ($cached instanceof ClassMetadata) {
+                    $this->loadedMetadata[$entityClassName] = $cached;
+
+                    $cached->wakeupReflection($metadataBuildingContext->getReflectionService());
+                } else {
+                    foreach ($this->loadMetadata($entityClassName, $metadataBuildingContext) as $loadedClass) {
+                        $loadedClassName = $loadedClass->getClassName();
+
+                        $this->cacheDriver->save($loadedClassName . $this->cacheSalt, $loadedClass, null);
+                    }
+                }
+            } else {
+                $this->loadMetadata($entityClassName, $metadataBuildingContext);
+            }
+        } catch (PersistenceMappingException $loadingException) {
+            $fallbackMetadataResponse = $this->onNotFoundMetadata($entityClassName, $metadataBuildingContext);
+
+            if (! $fallbackMetadataResponse) {
+                throw $loadingException;
+            }
+
+            $this->loadedMetadata[$entityClassName] = $fallbackMetadataResponse;
+        }
+
+        if ($className !== $entityClassName) {
+            // We do not have the alias name in the map, include it
+            $this->loadedMetadata[$className] = $this->loadedMetadata[$entityClassName];
+        }
+
+        $metadataBuildingContext->validate();
+
+        return $this->loadedMetadata[$entityClassName];
+    }
+
+    /**
+     * Loads the metadata of the class in question and all it's ancestors whose metadata
+     * is still not loaded.
+     *
+     * Important: The class $name does not necessarily exist at this point here.
+     * Scenarios in a code-generation setup might have access to XML
+     * Mapping files without the actual PHP code existing here. That is why the
+     * {@see Doctrine\ORM\Reflection\ReflectionService} interface
+     * should be used for reflection.
+     *
+     * @param string $name The name of the class for which the metadata should get loaded.
+     *
+     * @return ClassMetadata[]
+     *
+     * @throws InvalidArgumentException
+     * @throws ORMException
+     */
+    protected function loadMetadata(string $name, ClassMetadataBuildingContext $metadataBuildingContext) : array
+    {
+        if (! $this->initialized) {
+            $this->initialize();
+        }
+
+        $loaded          = [];
+        $parentClasses   = $this->getParentClasses($name);
+        $parentClasses[] = $name;
+
+        // Move down the hierarchy of parent classes, starting from the topmost class
+        $parent = null;
+
+        foreach ($parentClasses as $className) {
+            if (isset($this->loadedMetadata[$className])) {
+                $parent = $this->loadedMetadata[$className];
+
+                continue;
+            }
+
+            $class = $this->doLoadMetadata($className, $parent, $metadataBuildingContext);
+
+            $this->loadedMetadata[$className] = $class;
+
+            $parent   = $class;
+            $loaded[] = $class;
+        }
+
+        array_map([$this, 'resolveDiscriminatorValue'], $loaded);
+
+        return $loaded;
+    }
+
+    /**
+     * Gets an array of parent classes for the given entity class.
+     *
+     * @param string $name
+     *
+     * @return string[]
+     *
+     * @throws InvalidArgumentException
+     */
+    protected function getParentClasses($name) : array
+    {
+        // Collect parent classes, ignoring transient (not-mapped) classes.
+        $parentClasses = [];
+
+        foreach (array_reverse($this->getReflectionService()->getParentClasses($name)) as $parentClass) {
+            if (! $this->getDriver()->isTransient($parentClass)) {
+                $parentClasses[] = $parentClass;
+            }
+        }
+
+        return $parentClasses;
     }
 
     /**
@@ -109,55 +385,11 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
         string $className,
         ?ClassMetadata $parent,
         ClassMetadataBuildingContext $metadataBuildingContext
-    ) : ClassMetadata {
-        $classMetadata = new ClassMetadata($className, $metadataBuildingContext);
-
-        if ($parent) {
-            $classMetadata->setParent($parent);
-
-            foreach ($parent->getDeclaredPropertiesIterator() as $fieldName => $property) {
-                $classMetadata->addInheritedProperty($property);
-            }
-
-            $classMetadata->setInheritanceType($parent->inheritanceType);
-            $classMetadata->setIdentifier($parent->identifier);
-
-            if ($parent->discriminatorColumn) {
-                $classMetadata->setDiscriminatorColumn($parent->discriminatorColumn);
-                $classMetadata->setDiscriminatorMap($parent->discriminatorMap);
-            }
-
-            $classMetadata->setLifecycleCallbacks($parent->lifecycleCallbacks);
-            $classMetadata->setChangeTrackingPolicy($parent->changeTrackingPolicy);
-
-            if ($parent->isMappedSuperclass) {
-                $classMetadata->setCustomRepositoryClassName($parent->getCustomRepositoryClassName());
-            }
-        }
-
-        // Invoke driver
-        try {
-            $this->driver->loadMetadataForClass($classMetadata->getClassName(), $classMetadata, $metadataBuildingContext);
-        } catch (ReflectionException $e) {
-            throw MappingException::reflectionFailure($classMetadata->getClassName(), $e);
-        }
+    ) : ?ComponentMetadata {
+        /** @var ClassMetadata $classMetadata */
+        $classMetadata = $this->driver->loadMetadataForClass($className, $parent, $metadataBuildingContext);
 
         $this->completeIdentifierGeneratorMappings($classMetadata);
-
-        if ($parent) {
-            if ($parent->getCache()) {
-                $classMetadata->setCache(clone $parent->getCache());
-            }
-
-            if (! empty($parent->entityListeners) && empty($classMetadata->entityListeners)) {
-                $classMetadata->entityListeners = $parent->entityListeners;
-            }
-        }
-
-        if (! $classMetadata->discriminatorMap && $classMetadata->inheritanceType !== InheritanceType::NONE && $classMetadata->isRootEntity()) {
-            $this->addDefaultDiscriminatorMap($classMetadata);
-        }
-
         $this->completeRuntimeMetadata($classMetadata, $parent);
 
         if ($this->evm->hasListeners(Events::loadClassMetadata)) {
@@ -253,9 +485,10 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
      * Populates the discriminator value of the given metadata (if not set) by iterating over discriminator
      * map classes and looking for a fitting one.
      *
-     * @throws \InvalidArgumentException
-     * @throws \ReflectionException
+     * @throws InvalidArgumentException
+     * @throws ReflectionException
      * @throws MappingException
+     * @throws PersistenceMappingException
      */
     private function resolveDiscriminatorValue(ClassMetadata $metadata) : void
     {
@@ -286,60 +519,6 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
     }
 
     /**
-     * Adds a default discriminator map if no one is given
-     *
-     * If an entity is of any inheritance type and does not contain a
-     * discriminator map, then the map is generated automatically. This process
-     * is expensive computation wise.
-     *
-     * The automatically generated discriminator map contains the lowercase short name of
-     * each class as key.
-     *
-     * @throws MappingException
-     */
-    private function addDefaultDiscriminatorMap(ClassMetadata $class) : void
-    {
-        $allClasses = $this->driver->getAllClassNames();
-        $fqcn       = $class->getClassName();
-        $map        = [$this->getShortName($fqcn) => $fqcn];
-        $duplicates = [];
-
-        foreach ($allClasses as $subClassCandidate) {
-            if (is_subclass_of($subClassCandidate, $fqcn)) {
-                $shortName = $this->getShortName($subClassCandidate);
-
-                if (isset($map[$shortName])) {
-                    $duplicates[] = $shortName;
-                }
-
-                $map[$shortName] = $subClassCandidate;
-            }
-        }
-
-        if ($duplicates) {
-            throw MappingException::duplicateDiscriminatorEntry($class->getClassName(), $duplicates, $map);
-        }
-
-        $class->setDiscriminatorMap($map);
-    }
-
-    /**
-     * Gets the lower-case short name of a class.
-     *
-     * @param string $className
-     */
-    private function getShortName($className) : string
-    {
-        if (strpos($className, '\\') === false) {
-            return strtolower($className);
-        }
-
-        $parts = explode('\\', $className);
-
-        return strtolower(end($parts));
-    }
-
-    /**
      * Completes the ID generator mapping. If "auto" is specified we choose the generator
      * most appropriate for the targeted database platform.
      *
@@ -348,7 +527,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
     private function completeIdentifierGeneratorMappings(ClassMetadata $class) : void
     {
         foreach ($class->getDeclaredPropertiesIterator() as $property) {
-            if (! $property instanceof FieldMetadata /*&& ! $property instanceof AssocationMetadata*/) {
+            if (! $property instanceof FieldMetadata /*&& ! $property instanceof AssociationMetadata*/) {
                 continue;
             }
 
@@ -366,16 +545,13 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
         $class     = $field->getDeclaringClass();
         $generator = $field->getValueGenerator();
 
-        if ($generator->getType() === GeneratorType::AUTO) {
-            $generator = new ValueGeneratorMetadata(
-                $platform->prefersSequences()
-                    ? GeneratorType::SEQUENCE
-                    : ($platform->prefersIdentityColumns()
-                        ? GeneratorType::IDENTITY
-                        : GeneratorType::TABLE
-                ),
-                $field->getValueGenerator()->getDefinition()
-            );
+        if (in_array($generator->getType(), [GeneratorType::AUTO, GeneratorType::IDENTITY], true)) {
+            $generatorType = $platform->prefersSequences() || $platform->usesSequenceEmulatedIdentityColumns()
+                ? GeneratorType::SEQUENCE
+                : ($platform->prefersIdentityColumns() ? GeneratorType::IDENTITY : GeneratorType::TABLE);
+
+            $generator = new ValueGeneratorMetadata($generatorType, $field->getValueGenerator()->getDefinition());
+
             $field->setValueGenerator($generator);
         }
 
@@ -409,40 +585,13 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
                 break;
 
             case GeneratorType::CUSTOM:
-                $definition = $generator->getDefinition();
-                if (! isset($definition['class'])) {
-                    throw InvalidCustomGenerator::onClassNotConfigured();
-                }
-                if (! class_exists($definition['class'])) {
-                    throw InvalidCustomGenerator::onMissingClass($definition);
-                }
-
-                break;
-
             case GeneratorType::IDENTITY:
             case GeneratorType::NONE:
-            case GeneratorType::UUID:
                 break;
 
             default:
                 throw UnknownGeneratorType::create($generator->getType());
         }
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    protected function getDriver() : Driver\MappingDriver
-    {
-        return $this->driver;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    protected function isEntity(ClassMetadata $class) : bool
-    {
-        return isset($class->isMappedSuperclass) && $class->isMappedSuperclass === false;
     }
 
     private function getTargetPlatform() : Platforms\AbstractPlatform
@@ -456,21 +605,23 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
 
     private function buildValueGenerationPlan(ClassMetadata $class) : void
     {
-        $executors = $this->buildValueGenerationExecutorList($class);
+        $valueGenerationExecutorList = $this->buildValueGenerationExecutorList($class);
 
-        switch (count($executors)) {
+        switch (count($valueGenerationExecutorList)) {
             case 0:
-                $class->setValueGenerationPlan(new NoopValueGenerationPlan());
+                $valueGenerationPlan = new NoopValueGenerationPlan();
                 break;
 
             case 1:
-                $class->setValueGenerationPlan(new SingleValueGenerationPlan($class, $executors[0]));
+                $valueGenerationPlan = new SingleValueGenerationPlan($class, reset($valueGenerationExecutorList));
                 break;
 
             default:
-                $class->setValueGenerationPlan(new CompositeValueGenerationPlan($class, $executors));
+                $valueGenerationPlan = new CompositeValueGenerationPlan($class, $valueGenerationExecutorList);
                 break;
         }
+
+        $class->setValueGenerationPlan($valueGenerationPlan);
     }
 
     /**
@@ -481,68 +632,13 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
         $executors = [];
 
         foreach ($class->getDeclaredPropertiesIterator() as $property) {
-            $executor = $this->buildValueGenerationExecutorForProperty($class, $property);
+            $executor = $property->getValueGenerationExecutor($this->getTargetPlatform());
 
             if ($executor instanceof ValueGenerationExecutor) {
-                $executors[] = $executor;
+                $executors[$property->getName()] = $executor;
             }
         }
 
         return $executors;
-    }
-
-    private function buildValueGenerationExecutorForProperty(
-        ClassMetadata $class,
-        Property $property
-    ) : ?ValueGenerationExecutor {
-        if ($property instanceof LocalColumnMetadata && $property->hasValueGenerator()) {
-            return new ColumnValueGeneratorExecutor($property, $this->createPropertyValueGenerator($class, $property));
-        }
-
-        if ($property instanceof ToOneAssociationMetadata && $property->isPrimaryKey()) {
-            return new AssociationValueGeneratorExecutor();
-        }
-
-        return null;
-    }
-
-    private function createPropertyValueGenerator(
-        ClassMetadata $class,
-        LocalColumnMetadata $property
-    ) : Sequencing\Generator {
-        $platform = $this->getTargetPlatform();
-
-        switch ($property->getValueGenerator()->getType()) {
-            case GeneratorType::IDENTITY:
-                $sequenceName = null;
-
-                // Platforms that do not have native IDENTITY support need a sequence to emulate this behaviour.
-                if ($platform->usesSequenceEmulatedIdentityColumns()) {
-                    $sequencePrefix = $platform->getSequencePrefix($class->getTableName(), $class->getSchemaName());
-                    $idSequenceName = $platform->getIdentitySequenceName($sequencePrefix, $property->getColumnName());
-                    $sequenceName   = $platform->quoteIdentifier($platform->fixSchemaElementName($idSequenceName));
-                }
-
-                return $property->getTypeName() === 'bigint'
-                    ? new Sequencing\BigIntegerIdentityGenerator($sequenceName)
-                    : new Sequencing\IdentityGenerator($sequenceName);
-
-            case GeneratorType::SEQUENCE:
-                $definition = $property->getValueGenerator()->getDefinition();
-                return new Sequencing\SequenceGenerator(
-                    $platform->quoteIdentifier($definition['sequenceName']),
-                    $definition['allocationSize']
-                );
-                break;
-
-            case GeneratorType::UUID:
-                return new Sequencing\UuidGenerator();
-                break;
-
-            case GeneratorType::CUSTOM:
-                $class = $property->getValueGenerator()->getDefinition()['class'];
-                return new $class();
-                break;
-        }
     }
 }

@@ -181,7 +181,7 @@ Examples:
     protected $initials;
 
     /**
-     * @Column(type="integer", name="login_count" nullable=false, options={"unsigned":true, "default":0})
+     * @Column(type="integer", name="login_count", nullable=false, options={"unsigned":true, "default":0})
      */
     protected $loginCount;
 
@@ -395,7 +395,7 @@ Example:
      */
     class User
     {
-        //...
+        // ...
     }
 
 .. _annref_entity_result:
@@ -446,7 +446,7 @@ used as default.
 Optional attributes:
 
 -  **strategy**: Set the name of the identifier generation strategy.
-   Valid values are ``AUTO``, ``SEQUENCE``, ``TABLE``, ``IDENTITY``, ``UUID``, ``CUSTOM`` and ``NONE``, explained
+   Valid values are ``AUTO``, ``SEQUENCE``, ``TABLE``, ``IDENTITY``, ``CUSTOM`` and ``NONE``, explained
    in the :ref:`Identifier Generation Strategies <identifier-generation-strategies>` section.
    If not specified, default value is AUTO.
 

@@ -15,7 +15,7 @@ with associations in Doctrine:
    removed, not the entity itself. A collection of entities always
    only represents the association to the containing entities, not the
    entity itself.
--  When a bidirectional assocation is updated, Doctrine only checks
+-  When a bidirectional association is updated, Doctrine only checks
    on one of both sides for these changes. This is called the :doc:`owning side <unitofwork-associations>`
    of the association.
 -  A property with a reference to many entities has to be instances of the
@@ -290,7 +290,7 @@ example that encapsulate much of the association management code:
     <?php
     class User
     {
-        //...
+        // ...
         public function markCommentRead(Comment $comment) {
             // Collections implement ArrayAccess
             $this->commentsRead[] = $comment;
@@ -460,14 +460,14 @@ If you then set up the cascading to the ``User#commentsAuthored`` property...
     <?php
     class User
     {
-        //...
+        // ...
         /**
          * Bidirectional - One-To-Many (INVERSE SIDE)
          *
          * @OneToMany(targetEntity="Comment", mappedBy="author", cascade={"persist", "remove"})
          */
         private $commentsAuthored;
-        //...
+        // ...
     }
 
 ...you can now create a user and an associated comment like this:

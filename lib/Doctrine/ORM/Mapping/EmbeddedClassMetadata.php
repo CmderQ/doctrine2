@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Mapping;
 
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\ORM\Reflection\ReflectionService;
+use Doctrine\ORM\Sequencing\Planning\ValueGenerationExecutor;
+use ReflectionProperty;
 
 /**
  * @property MappedSuperClassMetadata $parent
@@ -14,7 +17,7 @@ class EmbeddedClassMetadata extends ComponentMetadata implements Property
     /** @var ClassMetadata */
     private $declaringClass;
 
-    /** @var \ReflectionProperty */
+    /** @var ReflectionProperty */
     private $reflection;
 
     /** @var string */
@@ -88,7 +91,7 @@ class EmbeddedClassMetadata extends ComponentMetadata implements Property
     /**
      * {@inheritdoc}
      */
-    public function setReflectionProperty(\ReflectionProperty $reflectionProperty) : void
+    public function setReflectionProperty(ReflectionProperty $reflectionProperty) : void
     {
         $this->reflection = $reflectionProperty;
     }
@@ -101,5 +104,10 @@ class EmbeddedClassMetadata extends ComponentMetadata implements Property
         $this->setReflectionProperty(
             $reflectionService->getAccessibleProperty($this->declaringClass->getClassName(), $this->name)
         );
+    }
+
+    public function getValueGenerationExecutor(AbstractPlatform $platform) : ?ValueGenerationExecutor
+    {
+        return null;
     }
 }

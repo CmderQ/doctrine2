@@ -68,20 +68,18 @@ class DriverChain implements MappingDriver
      */
     public function loadMetadataForClass(
         string $className,
-        Mapping\ClassMetadata $metadata,
+        ?Mapping\ComponentMetadata $parent,
         Mapping\ClassMetadataBuildingContext $metadataBuildingContext
-    ) {
+    ) : Mapping\ComponentMetadata {
         /** @var MappingDriver $driver */
         foreach ($this->drivers as $namespace => $driver) {
             if (strpos($className, $namespace) === 0) {
-                $driver->loadMetadataForClass($className, $metadata, $metadataBuildingContext);
-                return;
+                return $driver->loadMetadataForClass($className, $parent, $metadataBuildingContext);
             }
         }
 
         if ($this->defaultDriver !== null) {
-            $this->defaultDriver->loadMetadataForClass($className, $metadata, $metadataBuildingContext);
-            return;
+            return $this->defaultDriver->loadMetadataForClass($className, $parent, $metadataBuildingContext);
         }
 
         throw Mapping\MappingException::classNotFoundInNamespaces($className, array_keys($this->drivers));
@@ -90,7 +88,7 @@ class DriverChain implements MappingDriver
     /**
      * {@inheritDoc}
      */
-    public function getAllClassNames()
+    public function getAllClassNames() : array
     {
         $classNames    = [];
         $driverClasses = [];
@@ -122,7 +120,7 @@ class DriverChain implements MappingDriver
     /**
      * {@inheritDoc}
      */
-    public function isTransient($className)
+    public function isTransient($className) : bool
     {
         /** @var MappingDriver $driver */
         foreach ($this->drivers as $namespace => $driver) {

@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Mapping\Driver;
 
+use Doctrine\Common\Collections\Criteria;
+use Doctrine\DBAL\DBALException;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\Annotation;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\Mapping;
+use Doctrine\ORM\Mapping\Builder;
+use InvalidArgumentException;
 use SimpleXMLElement;
-use function array_filter;
 use function class_exists;
 use function constant;
 use function explode;
@@ -18,8 +22,8 @@ use function in_array;
 use function simplexml_load_string;
 use function sprintf;
 use function str_replace;
-use function strtolower;
 use function strtoupper;
+use function var_export;
 
 /**
  * XmlDriver is a metadata driver that enables mapping through XML files.
@@ -38,12 +42,16 @@ class XmlDriver extends FileDriver
 
     /**
      * {@inheritDoc}
+     *
+     * @throws DBALException
      */
     public function loadMetadataForClass(
         string $className,
-        Mapping\ClassMetadata $metadata,
+        ?Mapping\ComponentMetadata $parent,
         Mapping\ClassMetadataBuildingContext $metadataBuildingContext
-    ) {
+    ) : Mapping\ComponentMetadata {
+        $metadata = new Mapping\ClassMetadata($className, $parent, $metadataBuildingContext);
+
         /** @var SimpleXMLElement $xmlRoot */
         $xmlRoot = $this->getElement($className);
 
@@ -71,75 +79,60 @@ class XmlDriver extends FileDriver
         $parent = $metadata->getParent();
 
         if ($parent && $parent->inheritanceType === Mapping\InheritanceType::SINGLE_TABLE) {
-            $metadata->setTable($parent->table);
-        } else {
-            $namingStrategy = $metadataBuildingContext->getNamingStrategy();
-            $tableMetadata  = new Mapping\TableMetadata();
+            // Handle the case where a middle mapped super class inherits from a single table inheritance tree.
+            do {
+                if (! $parent->isMappedSuperclass) {
+                    $metadata->setTable($parent->table);
 
-            $tableMetadata->setName($namingStrategy->classToTableName($metadata->getClassName()));
+                    break;
+                }
+
+                $parent = $parent->getParent();
+            } while ($parent !== null);
+        } else {
+            $tableAnnotation = new Annotation\Table();
 
             // Evaluate <entity...> attributes
             if (isset($xmlRoot['table'])) {
-                $tableMetadata->setName((string) $xmlRoot['table']);
+                $tableAnnotation->name = (string) $xmlRoot['table'];
             }
 
             if (isset($xmlRoot['schema'])) {
-                $tableMetadata->setSchema((string) $xmlRoot['schema']);
-            }
-
-            if (isset($xmlRoot->options)) {
-                $options = $this->parseOptions($xmlRoot->options->children());
-
-                foreach ($options as $optionName => $optionValue) {
-                    $tableMetadata->addOption($optionName, $optionValue);
-                }
+                $tableAnnotation->schema = (string) $xmlRoot['schema'];
             }
 
             // Evaluate <indexes...>
             if (isset($xmlRoot->indexes)) {
-                foreach ($xmlRoot->indexes->index as $indexXml) {
-                    $indexName = isset($indexXml['name']) ? (string) $indexXml['name'] : null;
-                    $columns   = explode(',', (string) $indexXml['columns']);
-                    $isUnique  = isset($indexXml['unique']) && $indexXml['unique'];
-                    $options   = isset($indexXml->options) ? $this->parseOptions($indexXml->options->children()) : [];
-                    $flags     = isset($indexXml['flags']) ? explode(',', (string) $indexXml['flags']) : [];
-
-                    $tableMetadata->addIndex([
-                        'name'    => $indexName,
-                        'columns' => $columns,
-                        'unique'  => $isUnique,
-                        'options' => $options,
-                        'flags'   => $flags,
-                    ]);
-                }
+                $tableAnnotation->indexes = $this->parseIndexes($xmlRoot->indexes->children());
             }
 
             // Evaluate <unique-constraints..>
-
             if (isset($xmlRoot->{'unique-constraints'})) {
-                foreach ($xmlRoot->{'unique-constraints'}->{'unique-constraint'} as $uniqueXml) {
-                    $indexName = isset($uniqueXml['name']) ? (string) $uniqueXml['name'] : null;
-                    $columns   = explode(',', (string) $uniqueXml['columns']);
-                    $options   = isset($uniqueXml->options) ? $this->parseOptions($uniqueXml->options->children()) : [];
-                    $flags     = isset($uniqueXml['flags']) ? explode(',', (string) $uniqueXml['flags']) : [];
-
-                    $tableMetadata->addUniqueConstraint([
-                        'name'    => $indexName,
-                        'columns' => $columns,
-                        'options' => $options,
-                        'flags'   => $flags,
-                    ]);
-                }
+                $tableAnnotation->uniqueConstraints = $this->parseUniqueConstraints($xmlRoot->{'unique-constraints'}->children());
             }
 
-            $metadata->setTable($tableMetadata);
+            if (isset($xmlRoot->options)) {
+                $tableAnnotation->options = $this->parseOptions($xmlRoot->options->children());
+            }
+
+            $tableBuilder = new Builder\TableMetadataBuilder($metadataBuildingContext);
+
+            $tableBuilder
+                ->withEntityClassMetadata($metadata)
+                ->withTableAnnotation($tableAnnotation);
+
+            $metadata->setTable($tableBuilder->build());
         }
 
         // Evaluate second level cache
         if (isset($xmlRoot->cache)) {
-            $cache = $this->convertCacheElementToCacheMetadata($xmlRoot->cache, $metadata);
+            $cacheBuilder = new Builder\CacheMetadataBuilder($metadataBuildingContext);
 
-            $metadata->setCache($cache);
+            $cacheBuilder
+                ->withComponentMetadata($metadata)
+                ->withCacheAnnotation($this->convertCacheElementToCacheAnnotation($xmlRoot->cache));
+
+            $metadata->setCache($cacheBuilder->build());
         }
 
         if (isset($xmlRoot['inheritance-type'])) {
@@ -150,31 +143,18 @@ class XmlDriver extends FileDriver
             );
 
             if ($metadata->inheritanceType !== Mapping\InheritanceType::NONE) {
-                $discriminatorColumn = new Mapping\DiscriminatorColumnMetadata();
+                $discriminatorColumnBuilder = new Builder\DiscriminatorColumnMetadataBuilder($metadataBuildingContext);
 
-                $discriminatorColumn->setTableName($metadata->getTableName());
-                $discriminatorColumn->setColumnName('dtype');
-                $discriminatorColumn->setType(Type::getType('string'));
-                $discriminatorColumn->setLength(255);
+                $discriminatorColumnBuilder
+                    ->withComponentMetadata($metadata)
+                    ->withDiscriminatorColumnAnnotation(
+                        isset($xmlRoot->{'discriminator-column'})
+                            ? $this->convertDiscriminiatorColumnElementToDiscriminatorColumnAnnotation($xmlRoot->{'discriminator-column'})
+                            : null
+                    );
 
-                // Evaluate <discriminator-column...>
-                if (isset($xmlRoot->{'discriminator-column'})) {
-                    $discriminatorColumnMapping = $xmlRoot->{'discriminator-column'};
-                    $typeName                   = (string) ($discriminatorColumnMapping['type'] ?? 'string');
 
-                    $discriminatorColumn->setType(Type::getType($typeName));
-                    $discriminatorColumn->setColumnName((string) $discriminatorColumnMapping['name']);
-
-                    if (isset($discriminatorColumnMapping['column-definition'])) {
-                        $discriminatorColumn->setColumnDefinition((string) $discriminatorColumnMapping['column-definition']);
-                    }
-
-                    if (isset($discriminatorColumnMapping['length'])) {
-                        $discriminatorColumn->setLength((int) $discriminatorColumnMapping['length']);
-                    }
-                }
-
-                $metadata->setDiscriminatorColumn($discriminatorColumn);
+                $metadata->setDiscriminatorColumn($discriminatorColumnBuilder->build());
 
                 // Evaluate <discriminator-map...>
                 if (isset($xmlRoot->{'discriminator-map'})) {
@@ -201,9 +181,8 @@ class XmlDriver extends FileDriver
         // Evaluate <field ...> mappings
         if (isset($xmlRoot->field)) {
             foreach ($xmlRoot->field as $fieldElement) {
-                $fieldName        = (string) $fieldElement['name'];
-                $isFieldVersioned = isset($fieldElement['version']) && $fieldElement['version'];
-                $fieldMetadata    = $this->convertFieldElementToFieldMetadata($fieldElement, $fieldName, $isFieldVersioned);
+                $fieldName     = (string) $fieldElement['name'];
+                $fieldMetadata = $this->convertFieldElementToFieldMetadata($fieldElement, $fieldName, $metadata, $metadataBuildingContext);
 
                 $metadata->addProperty($fieldMetadata);
             }
@@ -220,8 +199,8 @@ class XmlDriver extends FileDriver
                     : true;
 
                 $mapping = [
-                    'fieldName' => (string) $embeddedMapping['name'],
-                    'class' => (string) $embeddedMapping['class'],
+                    'fieldName'    => (string) $embeddedMapping['name'],
+                    'class'        => (string) $embeddedMapping['class'],
                     'columnPrefix' => $useColumnPrefix ? $columnPrefix : false,
                 ];
 
@@ -241,9 +220,14 @@ class XmlDriver extends FileDriver
                 continue;
             }
 
-            $fieldMetadata = $this->convertFieldElementToFieldMetadata($idElement, $fieldName, false);
+            $fieldMetadata = $this->convertFieldElementToFieldMetadata($idElement, $fieldName, $metadata, $metadataBuildingContext);
 
             $fieldMetadata->setPrimaryKey(true);
+
+            // Prevent PK and version on same field
+            if ($fieldMetadata->isVersioned()) {
+                throw Mapping\MappingException::cannotVersionIdField($className, $fieldName);
+            }
 
             if (isset($idElement->generator)) {
                 $strategy = (string) ($idElement->generator['strategy'] ?? 'AUTO');
@@ -257,21 +241,35 @@ class XmlDriver extends FileDriver
                     if (isset($idElement->{'sequence-generator'})) {
                         $seqGenerator          = $idElement->{'sequence-generator'};
                         $idGeneratorDefinition = [
-                            'sequenceName' => (string) $seqGenerator['sequence-name'],
+                            'sequenceName'   => (string) $seqGenerator['sequence-name'],
                             'allocationSize' => (string) $seqGenerator['allocation-size'],
                         ];
                     } elseif (isset($idElement->{'custom-id-generator'})) {
                         $customGenerator = $idElement->{'custom-id-generator'};
 
                         $idGeneratorDefinition = [
-                            'class' => (string) $customGenerator['class'],
+                            'class'     => (string) $customGenerator['class'],
                             'arguments' => [],
                         ];
+
+                        if (! isset($idGeneratorDefinition['class'])) {
+                            throw new Mapping\MappingException(
+                                sprintf('Cannot instantiate custom generator, no class has been defined')
+                            );
+                        }
+
+                        if (! class_exists($idGeneratorDefinition['class'])) {
+                            throw new Mapping\MappingException(
+                                sprintf('Cannot instantiate custom generator : %s', var_export($idGeneratorDefinition, true))
+                            );
+                        }
                     } elseif (isset($idElement->{'table-generator'})) {
                         throw Mapping\MappingException::tableIdGeneratorNotImplemented($className);
                     }
 
-                    $fieldMetadata->setValueGenerator(new Mapping\ValueGeneratorMetadata($idGeneratorType, $idGeneratorDefinition));
+                    $fieldMetadata->setValueGenerator(
+                        new Mapping\ValueGeneratorMetadata($idGeneratorType, $idGeneratorDefinition)
+                    );
                 }
             }
 
@@ -327,13 +325,14 @@ class XmlDriver extends FileDriver
 
                 // Evaluate second level cache
                 if (isset($oneToOneElement->cache)) {
-                    $association->setCache(
-                        $this->convertCacheElementToCacheMetadata(
-                            $oneToOneElement->cache,
-                            $metadata,
-                            $association->getName()
-                        )
-                    );
+                    $cacheBuilder = new Builder\CacheMetadataBuilder($metadataBuildingContext);
+
+                    $cacheBuilder
+                        ->withComponentMetadata($metadata)
+                        ->withFieldName($association->getName())
+                        ->withCacheAnnotation($this->convertCacheElementToCacheAnnotation($oneToOneElement->cache));
+
+                    $association->setCache($cacheBuilder->build());
                 }
 
                 $metadata->addProperty($association);
@@ -372,7 +371,9 @@ class XmlDriver extends FileDriver
                     $orderBy = [];
 
                     foreach ($oneToManyElement->{'order-by'}->{'order-by-field'} as $orderByField) {
-                        $orderBy[(string) $orderByField['name']] = (string) $orderByField['direction'];
+                        $orderBy[(string) $orderByField['name']] = isset($orderByField['direction'])
+                            ? (string) $orderByField['direction']
+                            : Criteria::ASC;
                     }
 
                     $association->setOrderBy($orderBy);
@@ -381,18 +382,19 @@ class XmlDriver extends FileDriver
                 if (isset($oneToManyElement['index-by'])) {
                     $association->setIndexedBy((string) $oneToManyElement['index-by']);
                 } elseif (isset($oneToManyElement->{'index-by'})) {
-                    throw new \InvalidArgumentException('<index-by /> is not a valid tag');
+                    throw new InvalidArgumentException('<index-by /> is not a valid tag');
                 }
 
                 // Evaluate second level cache
                 if (isset($oneToManyElement->cache)) {
-                    $association->setCache(
-                        $this->convertCacheElementToCacheMetadata(
-                            $oneToManyElement->cache,
-                            $metadata,
-                            $association->getName()
-                        )
-                    );
+                    $cacheBuilder = new Builder\CacheMetadataBuilder($metadataBuildingContext);
+
+                    $cacheBuilder
+                        ->withComponentMetadata($metadata)
+                        ->withFieldName($association->getName())
+                        ->withCacheAnnotation($this->convertCacheElementToCacheAnnotation($oneToManyElement->cache));
+
+                    $association->setCache($cacheBuilder->build());
                 }
 
                 $metadata->addProperty($association);
@@ -439,13 +441,14 @@ class XmlDriver extends FileDriver
 
                 // Evaluate second level cache
                 if (isset($manyToOneElement->cache)) {
-                    $association->setCache(
-                        $this->convertCacheElementToCacheMetadata(
-                            $manyToOneElement->cache,
-                            $metadata,
-                            $association->getName()
-                        )
-                    );
+                    $cacheBuilder = new Builder\CacheMetadataBuilder($metadataBuildingContext);
+
+                    $cacheBuilder
+                        ->withComponentMetadata($metadata)
+                        ->withFieldName($association->getName())
+                        ->withCacheAnnotation($this->convertCacheElementToCacheAnnotation($manyToOneElement->cache));
+
+                    $association->setCache($cacheBuilder->build());
                 }
 
                 $metadata->addProperty($association);
@@ -520,7 +523,9 @@ class XmlDriver extends FileDriver
                     $orderBy = [];
 
                     foreach ($manyToManyElement->{'order-by'}->{'order-by-field'} as $orderByField) {
-                        $orderBy[(string) $orderByField['name']] = (string) $orderByField['direction'];
+                        $orderBy[(string) $orderByField['name']] = isset($orderByField['direction'])
+                            ? (string) $orderByField['direction']
+                            : Criteria::ASC;
                     }
 
                     $association->setOrderBy($orderBy);
@@ -529,18 +534,19 @@ class XmlDriver extends FileDriver
                 if (isset($manyToManyElement['index-by'])) {
                     $association->setIndexedBy((string) $manyToManyElement['index-by']);
                 } elseif (isset($manyToManyElement->{'index-by'})) {
-                    throw new \InvalidArgumentException('<index-by /> is not a valid tag');
+                    throw new InvalidArgumentException('<index-by /> is not a valid tag');
                 }
 
                 // Evaluate second level cache
                 if (isset($manyToManyElement->cache)) {
-                    $association->setCache(
-                        $this->convertCacheElementToCacheMetadata(
-                            $manyToManyElement->cache,
-                            $metadata,
-                            $association->getName()
-                        )
-                    );
+                    $cacheBuilder = new Builder\CacheMetadataBuilder($metadataBuildingContext);
+
+                    $cacheBuilder
+                        ->withComponentMetadata($metadata)
+                        ->withFieldName($association->getName())
+                        ->withCacheAnnotation($this->convertCacheElementToCacheAnnotation($manyToManyElement->cache));
+
+                    $association->setCache($cacheBuilder->build());
                 }
 
                 $metadata->addProperty($association);
@@ -553,7 +559,7 @@ class XmlDriver extends FileDriver
                 $fieldName = (string) $overrideElement['name'];
 
                 foreach ($overrideElement->field as $fieldElement) {
-                    $fieldMetadata = $this->convertFieldElementToFieldMetadata($fieldElement, $fieldName, false);
+                    $fieldMetadata = $this->convertFieldElementToFieldMetadata($fieldElement, $fieldName, $metadata, $metadataBuildingContext);
 
                     $metadata->setPropertyOverride($fieldMetadata);
                 }
@@ -638,7 +644,7 @@ class XmlDriver extends FileDriver
                 $eventName  = constant(Events::class . '::' . (string) $lifecycleCallback['type']);
                 $methodName = (string) $lifecycleCallback['method'];
 
-                $metadata->addLifecycleCallback($methodName, $eventName);
+                $metadata->addLifecycleCallback($eventName, $methodName);
             }
         }
 
@@ -654,20 +660,6 @@ class XmlDriver extends FileDriver
                     );
                 }
 
-                $listenerClass = new \ReflectionClass($listenerClassName);
-
-                // Evaluate the listener using naming convention.
-                if ($listenerElement->count() === 0) {
-                    /** @var \ReflectionMethod $method */
-                    foreach ($listenerClass->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
-                        foreach ($this->getMethodCallbacks($method) as $callback) {
-                            $metadata->addEntityListener($callback, $listenerClassName, $method->getName());
-                        }
-                    }
-
-                    continue;
-                }
-
                 foreach ($listenerElement as $callbackElement) {
                     $eventName  = (string) $callbackElement['type'];
                     $methodName = (string) $callbackElement['method'];
@@ -676,6 +668,70 @@ class XmlDriver extends FileDriver
                 }
             }
         }
+
+        return $metadata;
+    }
+
+    /**
+     * Parses (nested) index elements.
+     *
+     * @param SimpleXMLElement $indexes The XML element.
+     *
+     * @return Annotation\Index[] The indexes array.
+     */
+    private function parseIndexes(SimpleXMLElement $indexes) : array
+    {
+        $array = [];
+
+        /** @var SimpleXMLElement $index */
+        foreach ($indexes as $index) {
+            $indexAnnotation = new Annotation\Index();
+
+            $indexAnnotation->columns = explode(',', (string) $index['columns']);
+            $indexAnnotation->options = isset($index->options) ? $this->parseOptions($index->options->children()) : [];
+            $indexAnnotation->flags   = isset($index['flags']) ? explode(',', (string) $index['flags']) : [];
+
+            if (isset($index['name'])) {
+                $indexAnnotation->name = (string) $index['name'];
+            }
+
+            if (isset($index['unique'])) {
+                $indexAnnotation->unique = $this->evaluateBoolean($index['unique']);
+            }
+
+            $array[] = $indexAnnotation;
+        }
+
+        return $array;
+    }
+
+    /**
+     * Parses (nested) unique constraint elements.
+     *
+     * @param SimpleXMLElement $uniqueConstraints The XML element.
+     *
+     * @return Annotation\UniqueConstraint[] The unique constraints array.
+     */
+    private function parseUniqueConstraints(SimpleXMLElement $uniqueConstraints) : array
+    {
+        $array = [];
+
+        /** @var SimpleXMLElement $uniqueConstraint */
+        foreach ($uniqueConstraints as $uniqueConstraint) {
+            $uniqueConstraintAnnotation = new Annotation\UniqueConstraint();
+
+            $uniqueConstraintAnnotation->columns = explode(',', (string) $uniqueConstraint['columns']);
+            $uniqueConstraintAnnotation->options = isset($uniqueConstraint->options) ? $this->parseOptions($uniqueConstraint->options->children()) : [];
+            $uniqueConstraintAnnotation->flags   = isset($uniqueConstraint['flags']) ? explode(',', (string) $uniqueConstraint['flags']) : [];
+
+            if (isset($uniqueConstraint['name'])) {
+                $uniqueConstraintAnnotation->name = (string) $uniqueConstraint['name'];
+            }
+
+            $array[] = $uniqueConstraintAnnotation;
+        }
+
+        return $array;
     }
 
     /**
@@ -685,7 +741,7 @@ class XmlDriver extends FileDriver
      *
      * @return mixed[] The options array.
      */
-    private function parseOptions(SimpleXMLElement $options)
+    private function parseOptions(SimpleXMLElement $options) : array
     {
         $array = [];
 
@@ -700,7 +756,8 @@ class XmlDriver extends FileDriver
             $attributes = $option->attributes();
 
             if (isset($attributes->name)) {
-                $nameAttribute         = (string) $attributes->name;
+                $nameAttribute = (string) $attributes->name;
+
                 $array[$nameAttribute] = in_array($nameAttribute, ['unsigned', 'fixed'], true)
                     ? $this->evaluateBoolean($value)
                     : $value;
@@ -713,24 +770,25 @@ class XmlDriver extends FileDriver
     }
 
     /**
-     * @return Mapping\FieldMetadata
+     * @throws Mapping\MappingException
      */
-    private function convertFieldElementToFieldMetadata(SimpleXMLElement $fieldElement, string $fieldName, bool $isVersioned)
-    {
-        $fieldMetadata = $isVersioned
-            ? new Mapping\VersionFieldMetadata($fieldName)
-            : new Mapping\FieldMetadata($fieldName)
-        ;
+    private function convertFieldElementToFieldMetadata(
+        SimpleXMLElement $fieldElement,
+        string $fieldName,
+        Mapping\ClassMetadata $metadata,
+        Mapping\ClassMetadataBuildingContext $metadataBuildingContext
+    ) : Mapping\FieldMetadata {
+        $className     = $metadata->getClassName();
+        $isVersioned   = isset($fieldElement['version']) && $fieldElement['version'];
+        $fieldMetadata = new Mapping\FieldMetadata($fieldName);
+        $fieldType     = isset($fieldElement['type']) ? (string) $fieldElement['type'] : 'string';
+        $columnName    = isset($fieldElement['column'])
+            ? (string) $fieldElement['column']
+            : $metadataBuildingContext->getNamingStrategy()->propertyToColumnName($fieldName, $className);
 
-        $fieldMetadata->setType(Type::getType('string'));
-
-        if (isset($fieldElement['type'])) {
-            $fieldMetadata->setType(Type::getType((string) $fieldElement['type']));
-        }
-
-        if (isset($fieldElement['column'])) {
-            $fieldMetadata->setColumnName((string) $fieldElement['column']);
-        }
+        $fieldMetadata->setType(Type::getType($fieldType));
+        $fieldMetadata->setVersioned($isVersioned);
+        $fieldMetadata->setColumnName($columnName);
 
         if (isset($fieldElement['length'])) {
             $fieldMetadata->setLength((int) $fieldElement['length']);
@@ -760,6 +818,11 @@ class XmlDriver extends FileDriver
             $fieldMetadata->setOptions($this->parseOptions($fieldElement->options->children()));
         }
 
+        // Prevent column duplication
+        if ($metadata->checkPropertyDuplication($columnName)) {
+            throw Mapping\MappingException::duplicateColumnName($className, $columnName);
+        }
+
         return $fieldMetadata;
     }
 
@@ -768,10 +831,8 @@ class XmlDriver extends FileDriver
      * found in the given SimpleXMLElement.
      *
      * @param SimpleXMLElement $joinColumnElement The XML element.
-     *
-     * @return Mapping\JoinColumnMetadata
      */
-    private function convertJoinColumnElementToJoinColumnMetadata(SimpleXMLElement $joinColumnElement)
+    private function convertJoinColumnElementToJoinColumnMetadata(SimpleXMLElement $joinColumnElement) : Mapping\JoinColumnMetadata
     {
         $joinColumnMetadata = new Mapping\JoinColumnMetadata();
 
@@ -803,49 +864,39 @@ class XmlDriver extends FileDriver
 
     /**
      * Parse the given Cache as CacheMetadata
-     *
-     * @param string|null $fieldName
-     *
-     * @return Mapping\CacheMetadata
      */
-    private function convertCacheElementToCacheMetadata(
-        SimpleXMLElement $cacheMapping,
-        Mapping\ClassMetadata $metadata,
-        $fieldName = null
-    ) {
-        $baseRegion    = strtolower(str_replace('\\', '_', $metadata->getRootClassName()));
-        $defaultRegion = $baseRegion . ($fieldName ? '__' . $fieldName : '');
+    private function convertCacheElementToCacheAnnotation(SimpleXMLElement $cacheMapping) : Annotation\Cache
+    {
+        $cacheAnnotation = new Annotation\Cache();
 
-        $region = (string) ($cacheMapping['region'] ?? $defaultRegion);
-        $usage  = isset($cacheMapping['usage'])
-            ? constant(sprintf('%s::%s', Mapping\CacheUsage::class, strtoupper((string) $cacheMapping['usage'])))
-            : Mapping\CacheUsage::READ_ONLY
-        ;
+        if (isset($cacheMapping['region'])) {
+            $cacheAnnotation->region = (string) $cacheMapping['region'];
+        }
 
-        return new Mapping\CacheMetadata($usage, $region);
+        if (isset($cacheMapping['usage'])) {
+            $cacheAnnotation->usage = strtoupper((string) $cacheMapping['usage']);
+        }
+
+        return $cacheAnnotation;
     }
 
-    /**
-     * Parses the given method.
-     *
-     * @return string[]
-     */
-    private function getMethodCallbacks(\ReflectionMethod $method)
-    {
-        $events = [
-            Events::prePersist,
-            Events::postPersist,
-            Events::preUpdate,
-            Events::postUpdate,
-            Events::preRemove,
-            Events::postRemove,
-            Events::postLoad,
-            Events::preFlush,
-        ];
+    private function convertDiscriminiatorColumnElementToDiscriminatorColumnAnnotation(
+        SimpleXMLElement $discriminatorColumnMapping
+    ) : Annotation\DiscriminatorColumn {
+        $discriminatorColumnAnnotation = new Annotation\DiscriminatorColumn();
 
-        return array_filter($events, function ($eventName) use ($method) {
-            return $eventName === $method->getName();
-        });
+        $discriminatorColumnAnnotation->type = (string) ($discriminatorColumnMapping['type'] ?? 'string');
+        $discriminatorColumnAnnotation->name = (string) $discriminatorColumnMapping['name'];
+
+        if (isset($discriminatorColumnMapping['column-definition'])) {
+            $discriminatorColumnAnnotation->columnDefinition = (string) $discriminatorColumnMapping['column-definition'];
+        }
+
+        if (isset($discriminatorColumnMapping['length'])) {
+            $discriminatorColumnAnnotation->length = (int) $discriminatorColumnMapping['length'];
+        }
+
+        return $discriminatorColumnAnnotation;
     }
 
     /**
@@ -855,7 +906,7 @@ class XmlDriver extends FileDriver
      *
      * @return string[] The list of cascade options.
      */
-    private function getCascadeMappings(SimpleXMLElement $cascadeElement)
+    private function getCascadeMappings(SimpleXMLElement $cascadeElement) : array
     {
         $cascades = [];
 

@@ -881,6 +881,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
         self::assertFalse($user->groups->isInitialized(), 'The collection must not be initialized');
         self::assertEquals($queryCount + 1, $this->getCurrentQueryCount());
     }
+
     public function testContainsKeyIndexByManyToManyNonOwning() : void
     {
         $user  = $this->em->find(CmsUser::class, $this->userId2);
@@ -910,6 +911,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
         self::assertFalse($user->groups->isInitialized(), 'The collection must not be initialized');
         self::assertEquals($queryCount + 1, $this->getCurrentQueryCount());
     }
+
     public function testContainsKeyIndexByWithPkManyToManyNonOwning() : void
     {
         $class = $this->em->getClassMetadata(CmsGroup::class);
@@ -1060,7 +1062,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
      */
     public function testRemoveManagedElementFromOneToManyExtraLazyCollectionIsNoOp() : void
     {
-        list($userId, $tweetId) = $this->loadTweetFixture();
+        [$userId, $tweetId] = $this->loadTweetFixture();
 
         /** @var User $user */
         $user = $this->em->find(User::class, $userId);
@@ -1080,7 +1082,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
      */
     public function testRemoveManagedElementFromOneToManyExtraLazyCollectionWithoutDeletingTheTargetEntityEntryIsNoOp() : void
     {
-        list($userId, $tweetId) = $this->loadTweetFixture();
+        [$userId, $tweetId] = $this->loadTweetFixture();
 
         /** @var User $user */
         $user  = $this->em->find(User::class, $userId);
@@ -1110,7 +1112,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
      */
     public function testRemovingManagedLazyProxyFromExtraLazyOneToManyDoesRemoveTheAssociationButNotTheEntity() : void
     {
-        list($userId, $tweetId) = $this->loadTweetFixture();
+        [$userId, $tweetId] = $this->loadTweetFixture();
 
         /** @var User $user */
         $user  = $this->em->find(User::class, $userId);
@@ -1141,7 +1143,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
      */
     public function testRemoveOrphanedManagedElementFromOneToManyExtraLazyCollection() : void
     {
-        list($userId, $userListId) = $this->loadUserListFixture();
+        [$userId, $userListId] = $this->loadUserListFixture();
 
         /** @var User $user */
         $user = $this->em->find(User::class, $userId);
@@ -1165,7 +1167,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
      */
     public function testRemoveOrphanedUnManagedElementFromOneToManyExtraLazyCollection() : void
     {
-        list($userId, $userListId) = $this->loadUserListFixture();
+        [$userId, $userListId] = $this->loadUserListFixture();
 
         /** @var User $user */
         $user = $this->em->find(User::class, $userId);
@@ -1194,7 +1196,7 @@ class ExtraLazyCollectionTest extends OrmFunctionalTestCase
      */
     public function testRemoveOrphanedManagedLazyProxyFromExtraLazyOneToMany() : void
     {
-        list($userId, $userListId) = $this->loadUserListFixture();
+        [$userId, $userListId] = $this->loadUserListFixture();
 
         /** @var User $user */
         $user = $this->em->find(User::class, $userId);

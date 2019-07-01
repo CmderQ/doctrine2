@@ -65,11 +65,7 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     {
         $mappingDriver = $this->loadDriver();
 
-        $class = new ClassMetadata($entityClassName, $this->metadataBuildingContext);
-
-        $mappingDriver->loadMetadataForClass($entityClassName, $class, $this->metadataBuildingContext);
-
-        return $class;
+        return $mappingDriver->loadMetadataForClass($entityClassName, null, $this->metadataBuildingContext);
     }
 
     protected function createClassMetadataFactory(?EntityManagerInterface $em = null) : ClassMetadataFactory
@@ -141,8 +137,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testEntityTableNameAndInheritance
      * @param ClassMetadata $class
+     *
+     * @depends testEntityTableNameAndInheritance
      */
     public function testEntityUniqueConstraints($class) : ClassMetadata
     {
@@ -163,8 +160,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testEntityTableNameAndInheritance
      * @param ClassMetadata $class
+     *
+     * @depends testEntityTableNameAndInheritance
      */
     public function testEntityOptions($class) : ClassMetadata
     {
@@ -181,8 +179,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testEntityOptions
      * @param ClassMetadata $class
+     *
+     * @depends testEntityOptions
      */
     public function testEntitySequence($class) : void
     {
@@ -215,10 +214,10 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
         );
     }
 
-
     /**
-     * @depends testEntityTableNameAndInheritance
      * @param ClassMetadata $class
+     *
+     * @depends testEntityTableNameAndInheritance
      */
     public function testProperties($class) : ClassMetadata
     {
@@ -234,8 +233,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testProperties
      * @param ClassMetadata $class
+     *
+     * @depends testProperties
      */
     public function testVersionProperty($class) : void
     {
@@ -249,8 +249,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testEntityTableNameAndInheritance
      * @param ClassMetadata $class
+     *
+     * @depends testEntityTableNameAndInheritance
      */
     public function testFieldMappingsColumnNames($class) : ClassMetadata
     {
@@ -266,8 +267,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testEntityTableNameAndInheritance
      * @param ClassMetadata $class
+     *
+     * @depends testEntityTableNameAndInheritance
      */
     public function testStringFieldMappings($class) : ClassMetadata
     {
@@ -299,8 +301,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testEntityTableNameAndInheritance
      * @param ClassMetadata $class
+     *
+     * @depends testEntityTableNameAndInheritance
      */
     public function testIdFieldOptions($class) : ClassMetadata
     {
@@ -315,8 +318,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testProperties
      * @param ClassMetadata $class
+     *
+     * @depends testProperties
      */
     public function testIdentifier($class) : ClassMetadata
     {
@@ -418,8 +422,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testProperties
      * @param ClassMetadata $class
+     *
+     * @depends testProperties
      */
     public function testOwningOneToOneAssociation($class) : ClassMetadata
     {
@@ -436,8 +441,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testOwningOneToOneAssociation
      * @param ClassMetadata $class
+     *
+     * @depends testOwningOneToOneAssociation
      */
     public function testInverseOneToManyAssociation($class) : ClassMetadata
     {
@@ -458,8 +464,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testInverseOneToManyAssociation
      * @param ClassMetadata $class
+     *
+     * @depends testInverseOneToManyAssociation
      */
     public function testManyToManyAssociationWithCascadeAll($class) : ClassMetadata
     {
@@ -479,8 +486,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testManyToManyAssociationWithCascadeAll
      * @param ClassMetadata $class
+     *
+     * @depends testManyToManyAssociationWithCascadeAll
      */
     public function testLifecycleCallbacks($class) : ClassMetadata
     {
@@ -492,8 +500,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testManyToManyAssociationWithCascadeAll
      * @param ClassMetadata $class
+     *
+     * @depends testManyToManyAssociationWithCascadeAll
      */
     public function testLifecycleCallbacksSupportMultipleMethodNames($class) : ClassMetadata
     {
@@ -504,8 +513,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testLifecycleCallbacksSupportMultipleMethodNames
      * @param ClassMetadata $class
+     *
+     * @depends testLifecycleCallbacksSupportMultipleMethodNames
      */
     public function testJoinColumnUniqueAndNullable($class) : ClassMetadata
     {
@@ -522,8 +532,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testJoinColumnUniqueAndNullable
      * @param ClassMetadata $class
+     *
+     * @depends testJoinColumnUniqueAndNullable
      */
     public function testColumnDefinition($class) : ClassMetadata
     {
@@ -542,8 +553,9 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
     }
 
     /**
-     * @depends testColumnDefinition
      * @param ClassMetadata $class
+     *
+     * @depends testColumnDefinition
      */
     public function testJoinColumnOnDelete($class) : ClassMetadata
     {
@@ -561,7 +573,7 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
      */
     public function testDiscriminatorColumnDefaults() : void
     {
-        if (strpos(get_class($this), 'PHPMappingDriver') !== false) {
+        if (strpos(static::class, 'PHPMappingDriver') !== false) {
             $this->markTestSkipped('PHP Mapping Drivers have no defaults.');
         }
 
@@ -940,61 +952,6 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
         self::assertEquals('prePersistHandler2', $prePersist['method']);
     }
 
-
-    /**
-     * @group DDC-1955
-     */
-    public function testEntityListenersNamingConvention() : void
-    {
-        $factory  = $this->createClassMetadataFactory();
-        $metadata = $factory->getMetadataFor(CmsAddress::class);
-
-        self::assertArrayHasKey(Events::postPersist, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::prePersist, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::postUpdate, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::preUpdate, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::postRemove, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::preRemove, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::postLoad, $metadata->entityListeners);
-        self::assertArrayHasKey(Events::preFlush, $metadata->entityListeners);
-
-        self::assertCount(1, $metadata->entityListeners[Events::postPersist]);
-        self::assertCount(1, $metadata->entityListeners[Events::prePersist]);
-        self::assertCount(1, $metadata->entityListeners[Events::postUpdate]);
-        self::assertCount(1, $metadata->entityListeners[Events::preUpdate]);
-        self::assertCount(1, $metadata->entityListeners[Events::postRemove]);
-        self::assertCount(1, $metadata->entityListeners[Events::preRemove]);
-        self::assertCount(1, $metadata->entityListeners[Events::postLoad]);
-        self::assertCount(1, $metadata->entityListeners[Events::preFlush]);
-
-        $postPersist = $metadata->entityListeners[Events::postPersist][0];
-        $prePersist  = $metadata->entityListeners[Events::prePersist][0];
-        $postUpdate  = $metadata->entityListeners[Events::postUpdate][0];
-        $preUpdate   = $metadata->entityListeners[Events::preUpdate][0];
-        $postRemove  = $metadata->entityListeners[Events::postRemove][0];
-        $preRemove   = $metadata->entityListeners[Events::preRemove][0];
-        $postLoad    = $metadata->entityListeners[Events::postLoad][0];
-        $preFlush    = $metadata->entityListeners[Events::preFlush][0];
-
-        self::assertEquals(CmsAddressListener::class, $postPersist['class']);
-        self::assertEquals(CmsAddressListener::class, $prePersist['class']);
-        self::assertEquals(CmsAddressListener::class, $postUpdate['class']);
-        self::assertEquals(CmsAddressListener::class, $preUpdate['class']);
-        self::assertEquals(CmsAddressListener::class, $postRemove['class']);
-        self::assertEquals(CmsAddressListener::class, $preRemove['class']);
-        self::assertEquals(CmsAddressListener::class, $postLoad['class']);
-        self::assertEquals(CmsAddressListener::class, $preFlush['class']);
-
-        self::assertEquals(Events::postPersist, $postPersist['method']);
-        self::assertEquals(Events::prePersist, $prePersist['method']);
-        self::assertEquals(Events::postUpdate, $postUpdate['method']);
-        self::assertEquals(Events::preUpdate, $preUpdate['method']);
-        self::assertEquals(Events::postRemove, $postRemove['method']);
-        self::assertEquals(Events::preRemove, $preRemove['method']);
-        self::assertEquals(Events::postLoad, $postLoad['method']);
-        self::assertEquals(Events::preFlush, $preFlush['method']);
-    }
-
     /**
      * @group DDC-2183
      */
@@ -1056,7 +1013,7 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
      */
     public function testDiscriminatorColumnDefaultLength() : void
     {
-        if (strpos(get_class($this), 'PHPMappingDriver') !== false) {
+        if (strpos(static::class, 'PHPMappingDriver') !== false) {
             $this->markTestSkipped('PHP Mapping Drivers have no defaults.');
         }
 
@@ -1075,7 +1032,7 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
      */
     public function testDiscriminatorColumnDefaultType() : void
     {
-        if (strpos(get_class($this), 'PHPMappingDriver') !== false) {
+        if (strpos(static::class, 'PHPMappingDriver') !== false) {
             $this->markTestSkipped('PHP Mapping Drivers have no defaults.');
         }
 
@@ -1094,7 +1051,7 @@ abstract class AbstractMappingDriverTest extends OrmTestCase
      */
     public function testDiscriminatorColumnDefaultName() : void
     {
-        if (strpos(get_class($this), 'PHPMappingDriver') !== false) {
+        if (strpos(static::class, 'PHPMappingDriver') !== false) {
             $this->markTestSkipped('PHP Mapping Drivers have no defaults.');
         }
 
@@ -1161,7 +1118,6 @@ class User
      */
     public $version;
 
-
     /**
      * @ORM\PrePersist
      */
@@ -1223,9 +1179,9 @@ class User
         $metadata->setInheritanceType(Mapping\InheritanceType::NONE);
         $metadata->setChangeTrackingPolicy(Mapping\ChangeTrackingPolicy::DEFERRED_IMPLICIT);
 
-        $metadata->addLifecycleCallback('doStuffOnPrePersist', 'prePersist');
-        $metadata->addLifecycleCallback('doOtherStuffOnPrePersistToo', 'prePersist');
-        $metadata->addLifecycleCallback('doStuffOnPostPersist', 'postPersist');
+        $metadata->addLifecycleCallback('prePersist', 'doStuffOnPrePersist');
+        $metadata->addLifecycleCallback('prePersist', 'doOtherStuffOnPrePersistToo');
+        $metadata->addLifecycleCallback('postPersist', 'doStuffOnPostPersist');
 
         $metadata->setGeneratorDefinition(
             [
@@ -1264,9 +1220,10 @@ class User
 
         $metadata->addProperty($fieldMetadata);
 
-        $fieldMetadata = new Mapping\VersionFieldMetadata('version');
+        $fieldMetadata = new Mapping\FieldMetadata('version');
 
         $fieldMetadata->setType(Type::getType('integer'));
+        $fieldMetadata->setVersioned(true);
 
         $metadata->addProperty($fieldMetadata);
         $metadata->setIdGeneratorType(Mapping\GeneratorType::AUTO);

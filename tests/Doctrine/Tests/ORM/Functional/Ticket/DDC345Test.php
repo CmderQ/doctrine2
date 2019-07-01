@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Doctrine\Tests\ORM\Functional\Ticket;
 
+use DateTime;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Annotation as ORM;
 use Doctrine\Tests\OrmFunctionalTestCase;
@@ -16,9 +17,9 @@ class DDC345Test extends OrmFunctionalTestCase
         //$this->em->getConnection()->getConfiguration()->setSQLLogger(new \Doctrine\DBAL\Logging\EchoSQLLogger);
         $this->schemaTool->createSchema(
             [
-            $this->em->getClassMetadata(DDC345User::class),
-            $this->em->getClassMetadata(DDC345Group::class),
-            $this->em->getClassMetadata(DDC345Membership::class),
+                $this->em->getClassMetadata(DDC345User::class),
+                $this->em->getClassMetadata(DDC345Group::class),
+                $this->em->getClassMetadata(DDC345Membership::class),
             ]
         );
     }
@@ -100,7 +101,6 @@ class DDC345Group
     /** @ORM\OneToMany(targetEntity=DDC345Membership::class, mappedBy="group", cascade={"persist"}) */
     public $Memberships;
 
-
     public function __construct()
     {
         $this->Memberships = new ArrayCollection();
@@ -149,7 +149,7 @@ class DDC345Membership
     {
         //echo "***** PrePersist\n";
         ++$this->prePersistCallCount;
-        $this->updated = new \DateTime();
+        $this->updated = new DateTime();
     }
 
     /** @ORM\PreUpdate */
@@ -157,6 +157,6 @@ class DDC345Membership
     {
         //echo "***** PreUpdate\n";
         ++$this->preUpdateCallCount;
-        $this->updated = new \DateTime();
+        $this->updated = new DateTime();
     }
 }

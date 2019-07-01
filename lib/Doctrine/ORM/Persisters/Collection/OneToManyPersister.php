@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Persisters\Collection;
 
+use BadMethodCallException;
 use Doctrine\Common\Collections\Criteria;
 use Doctrine\DBAL\DBALException;
 use Doctrine\ORM\Mapping\InheritanceType;
@@ -36,7 +37,7 @@ class OneToManyPersister extends AbstractCollectionPersister
             // Handling non-orphan removal should never happen, as @OneToMany
             // can only be inverse side. For owning side one to many, it is
             // required to have a join table, which would classify as a ManyToManyPersister.
-            return;
+            return 0;
         }
 
         $targetClass = $this->em->getClassMetadata($association->getTargetEntity());
@@ -65,7 +66,7 @@ class OneToManyPersister extends AbstractCollectionPersister
         $association = $collection->getMapping();
 
         if (! ($association instanceof ToManyAssociationMetadata && $association->getIndexedBy())) {
-            throw new \BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
+            throw new BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
         }
 
         $persister = $this->uow->getEntityPersister($association->getTargetEntity());
@@ -114,7 +115,7 @@ class OneToManyPersister extends AbstractCollectionPersister
         $association = $collection->getMapping();
 
         if (! ($association instanceof ToManyAssociationMetadata && $association->getIndexedBy())) {
-            throw new \BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
+            throw new BadMethodCallException('Selecting a collection by index is only supported on indexed collections.');
         }
 
         $persister = $this->uow->getEntityPersister($association->getTargetEntity());
@@ -178,7 +179,7 @@ class OneToManyPersister extends AbstractCollectionPersister
      */
     public function loadCriteria(PersistentCollection $collection, Criteria $criteria)
     {
-        throw new \BadMethodCallException('Filtering a collection by Criteria is not supported by this CollectionPersister.');
+        throw new BadMethodCallException('Filtering a collection by Criteria is not supported by this CollectionPersister.');
     }
 
     /**

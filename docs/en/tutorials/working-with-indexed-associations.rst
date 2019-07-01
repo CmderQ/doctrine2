@@ -107,7 +107,7 @@ The code and mappings for the Market entity looks like this:
         <doctrine-mapping xmlns="http://doctrine-project.org/schemas/orm/doctrine-mapping"
               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
               xsi:schemaLocation="http://doctrine-project.org/schemas/orm/doctrine-mapping
-                                  http://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
+                                  https://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
 
             <entity name="Doctrine\Tests\Models\StockExchange\Market">
                 <id name="id" type="integer">
@@ -179,7 +179,7 @@ here are the code and mappings for it:
         <doctrine-mapping xmlns="http://doctrine-project.org/schemas/orm/doctrine-mapping"
               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
               xsi:schemaLocation="http://doctrine-project.org/schemas/orm/doctrine-mapping
-                                  http://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
+                                  https://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
 
             <entity name="Doctrine\Tests\Models\StockExchange\Stock">
                 <id name="id" type="integer">
@@ -260,6 +260,6 @@ Outlook into the Future
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 For the inverse side of a many-to-many associations there will be a way to persist the keys and the order
-as a third and fourth parameter into the join table. This feature is discussed in `DDC-213 <https://github.com/doctrine/doctrine2/issues/2817>`_
+as a third and fourth parameter into the join table. This feature is discussed in `DDC-213 <https://github.com/doctrine/orm/issues/2817>`_
 This feature cannot be implemented for one-to-many associations, because they are never the owning side.
 

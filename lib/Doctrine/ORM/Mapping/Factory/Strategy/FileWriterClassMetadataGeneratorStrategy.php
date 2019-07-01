@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Mapping\Factory\Strategy;
 
+use Doctrine\ORM\Mapping\ClassMetadataBuildingContext;
 use Doctrine\ORM\Mapping\Factory\ClassMetadataDefinition;
 use Doctrine\ORM\Mapping\Factory\ClassMetadataGenerator;
+use RuntimeException;
 use function chmod;
 use function dirname;
 use function file_put_contents;
@@ -29,9 +31,12 @@ class FileWriterClassMetadataGeneratorStrategy implements ClassMetadataGenerator
     /**
      * {@inheritdoc}
      */
-    public function generate(string $filePath, ClassMetadataDefinition $definition) : void
-    {
-        $sourceCode = $this->generator->generate($definition);
+    public function generate(
+        string $filePath,
+        ClassMetadataDefinition $definition,
+        ClassMetadataBuildingContext $metadataBuildingContext
+    ) : void {
+        $sourceCode = $this->generator->generate($definition, $metadataBuildingContext);
 
         $this->ensureDirectoryIsReady(dirname($filePath));
 
@@ -45,16 +50,16 @@ class FileWriterClassMetadataGeneratorStrategy implements ClassMetadataGenerator
     }
 
     /**
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     private function ensureDirectoryIsReady(string $directory)
     {
         if (! is_dir($directory) && (@mkdir($directory, 0775, true) === false)) {
-            throw new \RuntimeException(sprintf('Your metadata directory "%s" must be writable', $directory));
+            throw new RuntimeException(sprintf('Your metadata directory "%s" must be writable', $directory));
         }
 
         if (! is_writable($directory)) {
-            throw new \RuntimeException(sprintf('Your proxy directory "%s" must be writable', $directory));
+            throw new RuntimeException(sprintf('Your proxy directory "%s" must be writable', $directory));
         }
     }
 }

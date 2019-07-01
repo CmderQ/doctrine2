@@ -31,28 +31,37 @@ Example:
 
     <?php
     /** @MappedSuperclass */
-    class MappedSuperclassBase
+    class Person
     {
         /** @Column(type="integer") */
         protected $mapped1;
         /** @Column(type="string") */
         protected $mapped2;
         /**
-         * @OneToOne(targetEntity="MappedSuperclassRelated1")
-         * @JoinColumn(name="related1_id", referencedColumnName="id")
+         * @OneToOne(targetEntity="Toothbrush")
+         * @JoinColumn(name="toothbrush_id", referencedColumnName="id")
          */
-        protected $mappedRelated1;
+        protected $toothbrush;
 
         // ... more fields and methods
     }
 
     /** @Entity */
-    class EntitySubClass extends MappedSuperclassBase
+    class Employee extends Person
     {
         /** @Id @Column(type="integer") */
         private $id;
         /** @Column(type="string") */
         private $name;
+
+        // ... more fields and methods
+    }
+
+    /** @Entity */
+    class Toothbrush
+    {
+        /** @Id @Column(type="integer") */
+        private $id;
 
         // ... more fields and methods
     }
@@ -122,9 +131,7 @@ Things to note:
    be fully qualified if the classes are contained in the same
    namespace as the entity class on which the discriminator map is
    applied.
--  If no discriminator map is provided, then the map is generated
-   automatically. The automatically generated discriminator map
-   contains the lowercase short name of each class as key.
+-  If no discriminator map is provided, an exception will be thrown.
 
 Design-time considerations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -157,7 +164,7 @@ SQL Schema considerations
 For Single-Table-Inheritance to work in scenarios where you are
 using either a legacy database schema or a self-written database
 schema you have to make sure that all columns that are not in the
-root entity but in any of the different sub-entities has to allows
+root entity but in any of the different sub-entities has to allow
 null values. Columns that have NOT NULL constraints have to be on
 the root entity of the single-table inheritance hierarchy.
 
@@ -211,9 +218,7 @@ Things to note:
    be fully qualified if the classes are contained in the same
    namespace as the entity class on which the discriminator map is
    applied.
--  If no discriminator map is provided, then the map is generated
-   automatically. The automatically generated discriminator map
-   contains the lowercase short name of each class as key.
+-  If no discriminator map is provided, an exception will be thrown.
 
 .. note::
 
@@ -295,7 +300,7 @@ Example:
          */
         class User
         {
-            //other fields mapping
+            // other fields mapping
 
             /**
              * @ManyToMany(targetEntity="Group", inversedBy="users")
@@ -388,7 +393,7 @@ Things to note:
 -  This feature is available for all kind of associations. (OneToOne, OneToMany, ManyToOne, ManyToMany)
 -  The association type *CANNOT* be changed.
 -  The override could redefine the joinTables or joinColumns depending on the association type.
--  The override could redefine inversedBy to reference more than one extended entity.
+-  The override could redefine ``inversedBy`` to reference more than one extended entity.
 -  The override could redefine fetch to modify the fetch strategy of the extended entity.
 
 Attribute Override
@@ -427,7 +432,7 @@ Could be used by an entity that extends a mapped superclass to override a field 
          *          column=@Column(
          *              name     = "guest_id",
          *              type     = "integer",
-                        length   = 140
+         *              length   = 140
          *          )
          *      ),
          *      @AttributeOverride(name="name",
@@ -435,7 +440,7 @@ Could be used by an entity that extends a mapped superclass to override a field 
          *              name     = "guest_name",
          *              nullable = false,
          *              unique   = true,
-                        length   = 240
+         *              length   = 240
          *          )
          *      )
          * })

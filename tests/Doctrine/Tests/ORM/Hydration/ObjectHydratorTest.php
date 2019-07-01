@@ -1023,7 +1023,7 @@ class ObjectHydratorTest extends HydrationTestCase
         ];
 
         $proxyInstance = (new LazyLoadingGhostFactory(new Configuration()))
-            ->createProxy(ECommerceShipping::class, function () {
+            ->createProxy(ECommerceShipping::class, static function () {
                 self::fail('Proxy is not supposed to be lazy-loaded');
             });
 
@@ -1036,8 +1036,7 @@ class ObjectHydratorTest extends HydrationTestCase
             ->with($this->em->getClassMetadata(ECommerceShipping::class), ['id' => 42])
             ->willReturn($proxyInstance);
 
-        // @todo guilhermeblanco This should never have happened... replace this Reflection injection with proper API.
-        $this->swapPrivateProperty($this->em, 'proxyFactory', $proxyFactory);
+        $this->em->setProxyFactory($proxyFactory);
 
         // configuring lazy loading
         $metadata = $this->em->getClassMetadata(ECommerceProduct::class);
@@ -1074,7 +1073,7 @@ class ObjectHydratorTest extends HydrationTestCase
         ];
 
         $proxyInstance = (new LazyLoadingGhostFactory(new Configuration()))
-            ->createProxy(ECommerceShipping::class, function () {
+            ->createProxy(ECommerceShipping::class, static function () {
                 self::fail('Proxy is not supposed to be lazy-loaded');
             });
 
@@ -1090,8 +1089,7 @@ class ObjectHydratorTest extends HydrationTestCase
             ->with($this->em->getClassMetadata(ECommerceShipping::class), ['id' => 42])
             ->willReturn($proxyInstance);
 
-        // @todo guilhermeblanco This should never have happened... replace this Reflection injection with proper API.
-        $this->swapPrivateProperty($this->em, 'proxyFactory', $proxyFactory);
+        $this->em->setProxyFactory($proxyFactory);
 
         // configuring lazy loading
         $metadata = $this->em->getClassMetadata(ECommerceProduct::class);
@@ -1243,7 +1241,6 @@ class ObjectHydratorTest extends HydrationTestCase
      *   LEFT JOIN a.comments c
      *
      * @todo Figure it out why this test is commented out and provide a better description in docblock
-     *
      * @group bubu
      * @dataProvider provideDataForUserEntityResult
      */
@@ -1898,10 +1895,8 @@ class ObjectHydratorTest extends HydrationTestCase
         );
     }
 
-
     /**
      * @group DDC-1470
-     *
      * @expectedException \Doctrine\ORM\Internal\Hydration\HydrationException
      * @expectedExceptionMessage The meta mapping for the discriminator column "c_discr" is missing for "Doctrine\Tests\Models\Company\CompanyFixContract" using the DQL alias "c".
      */
@@ -1915,10 +1910,10 @@ class ObjectHydratorTest extends HydrationTestCase
         $rsm->setDiscriminatorColumn('c', 'c_discr');
 
         $resultSet = [
-              [
-                  'c__id'   => '1',
-                  'c_discr' => 'fix',
-              ],
+            [
+                'c__id'   => '1',
+                'c_discr' => 'fix',
+            ],
         ];
 
         $stmt     = new HydratorMockStatement($resultSet);
@@ -1928,7 +1923,6 @@ class ObjectHydratorTest extends HydrationTestCase
 
     /**
      * @group DDC-1470
-     *
      * @expectedException \Doctrine\ORM\Internal\Hydration\HydrationException
      * @expectedExceptionMessage The discriminator column "discr" is missing for "Doctrine\Tests\Models\Company\CompanyEmployee" using the DQL alias "e".
      */
@@ -1947,12 +1941,12 @@ class ObjectHydratorTest extends HydrationTestCase
         $rsm->setDiscriminatorColumn('e', 'e_discr');
 
         $resultSet = [
-              [
-                  'c__id'   => '1',
-                  'c_discr' => 'fix',
-                  'e__id'   => '1',
-                  'e__name' => 'Fabio B. Silva',
-              ],
+            [
+                'c__id'   => '1',
+                'c_discr' => 'fix',
+                'e__id'   => '1',
+                'e__name' => 'Fabio B. Silva',
+            ],
         ];
 
         $stmt     = new HydratorMockStatement($resultSet);
@@ -1962,7 +1956,6 @@ class ObjectHydratorTest extends HydrationTestCase
 
     /**
      * @group DDC-3076
-     *
      * @expectedException \Doctrine\ORM\Internal\Hydration\HydrationException
      * @expectedExceptionMessage The discriminator value "subworker" is invalid. It must be one of "person", "manager", "employee".
      */
@@ -1977,11 +1970,11 @@ class ObjectHydratorTest extends HydrationTestCase
         $rsm->setDiscriminatorColumn('p', 'discr');
 
         $resultSet = [
-              [
-                  'p__id'   => '1',
-                  'p__name' => 'Fabio B. Silva',
-                  'discr'   => 'subworker',
-              ],
+            [
+                'p__id'   => '1',
+                'p__name' => 'Fabio B. Silva',
+                'discr'   => 'subworker',
+            ],
         ];
 
         $stmt     = new HydratorMockStatement($resultSet);
@@ -2014,19 +2007,5 @@ class ObjectHydratorTest extends HydrationTestCase
         self::assertInstanceOf(PersistentCollection::class, $result[0]->collection);
         self::assertCount(1, $result[0]->collection);
         self::assertInstanceOf(SimpleEntity::class, $result[0]->collection[0]);
-    }
-
-    /**
-     * @param object $object
-     * @param mixed  $newValue
-     */
-    private function swapPrivateProperty($object, string $propertyName, $newValue)
-    {
-        $reflectionClass    = new \ReflectionClass($object);
-        $reflectionProperty = $reflectionClass->getProperty($propertyName);
-
-        $reflectionProperty->setAccessible(true);
-
-        $reflectionProperty->setValue($object, $newValue);
     }
 }

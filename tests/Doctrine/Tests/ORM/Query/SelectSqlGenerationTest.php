@@ -24,6 +24,7 @@ use Doctrine\Tests\Models\CMS\CmsPhonenumber;
 use Doctrine\Tests\Models\Company\CompanyEmployee;
 use Doctrine\Tests\Models\Company\CompanyPerson;
 use Doctrine\Tests\OrmTestCase;
+use Exception;
 use function get_class;
 
 class SelectSqlGenerationTest extends OrmTestCase
@@ -54,8 +55,7 @@ class SelectSqlGenerationTest extends OrmTestCase
 
             $query
                 ->setHint(ORMQuery::HINT_FORCE_PARTIAL_LOAD, true)
-                ->useQueryCache(false)
-            ;
+                ->useQueryCache(false);
 
             foreach ($queryHints as $name => $value) {
                 $query->setHint($name, $value);
@@ -64,7 +64,7 @@ class SelectSqlGenerationTest extends OrmTestCase
             $sqlGenerated = $query->getSQL();
 
             $query->free();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->fail($e->getMessage() . "\n" . $e->getTraceAsString());
         }
 
@@ -91,8 +91,7 @@ class SelectSqlGenerationTest extends OrmTestCase
 
         $query
             ->setHint(ORMQuery::HINT_FORCE_PARTIAL_LOAD, true)
-            ->useQueryCache(false)
-        ;
+            ->useQueryCache(false);
 
         foreach ($queryHints as $name => $value) {
             $query->setHint($name, $value);
@@ -285,6 +284,7 @@ class SelectSqlGenerationTest extends OrmTestCase
             'SELECT t0."id" AS c0, t0."username" AS c1 FROM "forum_users" t0 ORDER BY t0."id" ASC'
         );
     }
+
     public function testSupportsOrderByDesc() : void
     {
         $this->assertSqlGeneration(
@@ -849,9 +849,13 @@ class SelectSqlGenerationTest extends OrmTestCase
             ->setMaxResults(10)
             ->setFirstResult(0);
 
-        self::assertEquals(
-            'SELECT t0."id" AS c0, t0."status" AS c1, t0."username" AS c2, t0."name" AS c3, t0."email_id" AS c4 FROM "cms_users" t0 LIMIT 10 OFFSET 0',
-            $q->getSql()
+        // DBAL 2.8+ doesn't add OFFSET part when offset is 0
+        self::assertThat(
+            $q->getSql(),
+            self::logicalOr(
+                self::identicalTo('SELECT t0."id" AS c0, t0."status" AS c1, t0."username" AS c2, t0."name" AS c3, t0."email_id" AS c4 FROM "cms_users" t0 LIMIT 10'),
+                self::identicalTo('SELECT t0."id" AS c0, t0."status" AS c1, t0."username" AS c2, t0."name" AS c3, t0."email_id" AS c4 FROM "cms_users" t0 LIMIT 10 OFFSET 0')
+            )
         );
     }
 
@@ -1236,7 +1240,7 @@ class SelectSqlGenerationTest extends OrmTestCase
 
             $query->getSql();
             $query->free();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $exceptionThrown = true;
         }
 
@@ -1638,6 +1642,7 @@ class SelectSqlGenerationTest extends OrmTestCase
             'SELECT t0."name" AS c0 FROM "company_employees" t1 INNER JOIN "company_persons" t0 ON t1."id" = t0."id"'
         );
     }
+
     /**
      * @group DDC-1435
      */
@@ -2329,7 +2334,7 @@ class SelectSqlGenerationTest extends OrmTestCase
     }
 
     /**
-     * GitHub issue #4764: https://github.com/doctrine/doctrine2/issues/4764
+     * GitHub issue #4764: https://github.com/doctrine/orm/issues/4764
      *
      * @group DDC-3907
      * @dataProvider mathematicOperatorsProvider

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM\Exception;
 
+use Throwable;
+
 /**
- * Base exception class for all ORM exceptions.
+ * Marker interface for all ORM exceptions.
  */
-interface ORMException extends \Throwable
+interface ORMException extends Throwable
 {
 }

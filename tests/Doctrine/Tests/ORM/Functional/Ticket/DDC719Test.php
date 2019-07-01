@@ -15,7 +15,7 @@ class DDC719Test extends OrmFunctionalTestCase
         //$this->em->getConnection()->getConfiguration()->setSQLLogger(new \Doctrine\DBAL\Logging\EchoSQLLogger);
         $this->schemaTool->createSchema(
             [
-            $this->em->getClassMetadata(DDC719Group::class),
+                $this->em->getClassMetadata(DDC719Group::class),
             ]
         );
     }
@@ -88,7 +88,6 @@ class DDC719Group extends Entity
 
     /**
      * adds group as new child
-     *
      */
     public function addGroup(Group $child)
     {
@@ -100,7 +99,6 @@ class DDC719Group extends Entity
 
     /**
      * adds channel as new child
-     *
      */
     public function addChannel(Channel $child)
     {
@@ -116,26 +114,32 @@ class DDC719Group extends Entity
     {
         return $this->name;
     }
+
     public function setName($name)
     {
         $this->name = $name;
     }
+
     public function getDescription()
     {
         return $this->description;
     }
+
     public function setDescription($description)
     {
         $this->description = $description;
     }
+
     public function getChildren()
     {
         return $this->children;
     }
+
     public function getParents()
     {
         return $this->parents;
     }
+
     public function getChannels()
     {
         return $this->channels;

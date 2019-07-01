@@ -15,7 +15,6 @@ use Doctrine\ORM\Mapping\JoinColumnMetadata;
 use Doctrine\ORM\Mapping\ManyToManyAssociationMetadata;
 use Doctrine\ORM\Mapping\ToManyAssociationMetadata;
 use Doctrine\ORM\Mapping\ToOneAssociationMetadata;
-use Doctrine\ORM\Mapping\VersionFieldMetadata;
 use Doctrine\ORM\Utility\PersisterHelper;
 use function array_combine;
 use function array_keys;
@@ -221,7 +220,7 @@ class JoinedSubclassPersister extends AbstractEntityInheritancePersister
         }
 
         $orderBySql   = $this->getOrderBySQL($orderBy, $baseTableAlias);
-        $conditionSql = ($criteria instanceof Criteria)
+        $conditionSql = $criteria instanceof Criteria
             ? $this->getSelectConditionCriteriaSQL($criteria)
             : $this->getSelectConditionSQL($criteria, $association);
 
@@ -259,7 +258,7 @@ class JoinedSubclassPersister extends AbstractEntityInheritancePersister
                     . $where
                     . $orderBySql;
 
-        return $this->platform->modifyLimitQuery($query, $limit, $offset) . $lockSql;
+        return $this->platform->modifyLimitQuery($query, $limit, $offset ?? 0) . $lockSql;
     }
 
     /**
@@ -271,7 +270,7 @@ class JoinedSubclassPersister extends AbstractEntityInheritancePersister
         $baseTableAlias = $this->getSQLTableAlias($this->class->getTableName());
         $joinSql        = $this->getJoinSql($baseTableAlias);
 
-        $conditionSql = ($criteria instanceof Criteria)
+        $conditionSql = $criteria instanceof Criteria
             ? $this->getSelectConditionCriteriaSQL($criteria)
             : $this->getSelectConditionSQL($criteria);
 
@@ -285,12 +284,10 @@ class JoinedSubclassPersister extends AbstractEntityInheritancePersister
                 : $filterSql;
         }
 
-        $sql = 'SELECT COUNT(*) '
+        return 'SELECT COUNT(*) '
             . 'FROM ' . $tableName . ' ' . $baseTableAlias
             . $joinSql
             . (empty($conditionSql) ? '' : ' WHERE ' . $conditionSql);
-
-        return $sql;
     }
 
     /**
@@ -389,11 +386,11 @@ class JoinedSubclassPersister extends AbstractEntityInheritancePersister
                 }
 
                 switch (true) {
-                    case ($property instanceof FieldMetadata):
+                    case $property instanceof FieldMetadata:
                         $columnList[] = $this->getSelectColumnSQL($fieldName, $subClass);
                         break;
 
-                    case ($property instanceof ToOneAssociationMetadata && $property->isOwningSide()):
+                    case $property instanceof ToOneAssociationMetadata && $property->isOwningSide():
                         $targetClass = $this->em->getClassMetadata($property->getTargetEntity());
 
                         foreach ($property->getJoinColumns() as $joinColumn) {
@@ -435,7 +432,7 @@ class JoinedSubclassPersister extends AbstractEntityInheritancePersister
         }
 
         foreach ($this->class->getDeclaredPropertiesIterator() as $name => $property) {
-            if (($property instanceof FieldMetadata && ($property instanceof VersionFieldMetadata || $this->class->isInheritedProperty($name)))
+            if (($property instanceof FieldMetadata && ($property->isVersioned() || $this->class->isInheritedProperty($name)))
                 || ($property instanceof AssociationMetadata && $this->class->isInheritedProperty($name))
                 /*|| isset($this->class->embeddedClasses[$name])*/) {
                 continue;

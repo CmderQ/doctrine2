@@ -11,6 +11,7 @@ use Doctrine\ORM\Event\PreFlushEventArgs;
 use Doctrine\ORM\Event\PreUpdateEventArgs;
 use Doctrine\ORM\Query;
 use Doctrine\Tests\OrmFunctionalTestCase;
+use Exception;
 use function count;
 use function current;
 use function get_class;
@@ -30,7 +31,7 @@ class LifecycleCallbackTest extends OrmFunctionalTestCase
                     $this->em->getClassMetadata(LifecycleCallbackCascader::class),
                 ]
             );
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             // Swallow all exceptions. We do not test the schema tool here.
         }
     }
@@ -251,6 +252,7 @@ DQL;
             break;
         }
     }
+
     /**
      * @group DDC-54
      * @group DDC-3005
@@ -277,7 +279,7 @@ DQL;
     }
 
     /**
-     * https://github.com/doctrine/doctrine2/issues/6568
+     * https://github.com/doctrine/orm/issues/6568
      */
     public function testPostLoadIsInvokedOnFetchJoinedEntities() : void
     {
@@ -398,26 +400,32 @@ class LifecycleCallbackTestUser
     private $value;
     /** @ORM\Column(type="string") */
     private $name;
+
     public function getId()
     {
         return $this->id;
     }
+
     public function getValue()
     {
         return $this->value;
     }
+
     public function setValue($value)
     {
         $this->value = $value;
     }
+
     public function getName()
     {
         return $this->name;
     }
+
     public function setName($name)
     {
         $this->name = $name;
     }
+
     /** @ORM\PreUpdate */
     public function testCallback() : void
     {
@@ -550,6 +558,9 @@ class LifecycleCallbackChildEntity extends LifecycleCallbackParentEntity
 
 class LifecycleListenerPreUpdate
 {
+    /**
+     * @ORM\PreUpdate
+     */
     public function preUpdate(PreUpdateEventArgs $eventArgs)
     {
         $eventArgs->setNewValue('name', 'Bob');

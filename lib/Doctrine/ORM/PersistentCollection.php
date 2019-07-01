@@ -16,6 +16,7 @@ use Doctrine\ORM\Mapping\FetchMode;
 use Doctrine\ORM\Mapping\ManyToManyAssociationMetadata;
 use Doctrine\ORM\Mapping\OneToManyAssociationMetadata;
 use Doctrine\ORM\Mapping\ToManyAssociationMetadata;
+use RuntimeException;
 use function array_combine;
 use function array_diff_key;
 use function array_map;
@@ -504,6 +505,7 @@ final class PersistentCollection extends AbstractLazyCollection implements Selec
     {
         if (! isset($offset)) {
             $this->add($value);
+
             return;
         }
 
@@ -639,7 +641,7 @@ final class PersistentCollection extends AbstractLazyCollection implements Selec
      *
      * @return Collection|object[]
      *
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function matching(Criteria $criteria)
     {
@@ -667,7 +669,7 @@ final class PersistentCollection extends AbstractLazyCollection implements Selec
 
         $persister = $this->em->getUnitOfWork()->getEntityPersister($this->association->getTargetEntity());
 
-        return ($this->association->getFetchMode() === FetchMode::EXTRA_LAZY)
+        return $this->association->getFetchMode() === FetchMode::EXTRA_LAZY
             ? new LazyCriteriaCollection($persister, $criteria)
             : new ArrayCollection($persister->loadCriteria($criteria));
     }

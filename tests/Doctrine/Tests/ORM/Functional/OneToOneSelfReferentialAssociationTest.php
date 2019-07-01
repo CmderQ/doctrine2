@@ -8,6 +8,7 @@ use Doctrine\ORM\Annotation as ORM;
 use Doctrine\ORM\Mapping\FetchMode;
 use Doctrine\Tests\Models\ECommerce\ECommerceCustomer;
 use Doctrine\Tests\OrmFunctionalTestCase;
+use Exception;
 use ProxyManager\Proxy\GhostObjectInterface;
 use function get_class;
 
@@ -94,7 +95,7 @@ class OneToOneSelfReferentialAssociationTest extends OrmFunctionalTestCase
             $this->schemaTool->createSchema(
                 [$this->em->getClassMetadata(MultiSelfReference::class)]
             );
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             // Swallow all exceptions. We do not test the schema tool here.
         }
 
@@ -167,18 +168,22 @@ class MultiSelfReference
     {
         return $this->id;
     }
+
     public function setOther1($other1)
     {
         $this->other1 = $other1;
     }
+
     public function getOther1()
     {
         return $this->other1;
     }
+
     public function setOther2($other2)
     {
         $this->other2 = $other2;
     }
+
     public function getOther2()
     {
         return $this->other2;

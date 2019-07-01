@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Doctrine\Tests\ORM\Functional\Ticket;
 
+use DateTime;
 use Doctrine\ORM\Annotation as ORM;
 use Doctrine\Tests\OrmFunctionalTestCase;
+use Exception;
 use function get_class;
 
-/**
- * Class DDC2895Test
- */
 class DDC2895Test extends OrmFunctionalTestCase
 {
     public function setUp() : void
@@ -19,10 +18,10 @@ class DDC2895Test extends OrmFunctionalTestCase
         try {
             $this->schemaTool->createSchema(
                 [
-                $this->em->getClassMetadata(DDC2895::class),
+                    $this->em->getClassMetadata(DDC2895::class),
                 ]
             );
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
         }
     }
 
@@ -59,7 +58,8 @@ abstract class AbstractDDC2895
 {
     /**
      * @ORM\Column(name="last_modified", type="datetimetz", nullable=false)
-     * @var \DateTime
+     *
+     * @var DateTime
      */
     protected $lastModified;
 
@@ -69,11 +69,11 @@ abstract class AbstractDDC2895
      */
     public function setLastModifiedPreUpdate()
     {
-        $this->setLastModified(new \DateTime());
+        $this->setLastModified(new DateTime());
     }
 
     /**
-     * @param \DateTime $lastModified
+     * @param DateTime $lastModified
      */
     public function setLastModified($lastModified)
     {
@@ -81,7 +81,7 @@ abstract class AbstractDDC2895
     }
 
     /**
-     * @return \DateTime
+     * @return DateTime
      */
     public function getLastModified()
     {

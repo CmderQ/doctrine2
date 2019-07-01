@@ -7,6 +7,7 @@ namespace Doctrine\ORM\Tools;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Comparator;
+use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
@@ -27,8 +28,11 @@ use Doctrine\ORM\Tools\Event\GenerateSchemaEventArgs;
 use Doctrine\ORM\Tools\Event\GenerateSchemaTableEventArgs;
 use Doctrine\ORM\Tools\Exception\MissingColumnException;
 use Doctrine\ORM\Tools\Exception\NotSupported;
+use Throwable;
 use function array_diff;
-use function array_key_exists;
+use function array_diff_key;
+use function array_flip;
+use function array_intersect_key;
 use function array_keys;
 use function count;
 use function implode;
@@ -44,6 +48,8 @@ use function strtolower;
  */
 class SchemaTool
 {
+    private const KNOWN_COLUMN_OPTIONS = ['comment', 'unsigned', 'fixed', 'default'];
+
     /** @var EntityManagerInterface */
     private $em;
 
@@ -75,7 +81,7 @@ class SchemaTool
         foreach ($createSchemaSql as $sql) {
             try {
                 $conn->executeQuery($sql);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 throw ToolsException::schemaToolFailure($sql, $e);
             }
         }
@@ -109,8 +115,7 @@ class SchemaTool
         return isset($processedClasses[$class->getClassName()]) ||
             $class->isMappedSuperclass ||
             $class->isEmbeddedClass ||
-            ($class->inheritanceType === InheritanceType::SINGLE_TABLE && ! $class->isRootEntity())
-        ;
+            ($class->inheritanceType === InheritanceType::SINGLE_TABLE && ! $class->isRootEntity());
     }
 
     /**
@@ -459,19 +464,8 @@ class SchemaTool
 
         $fieldOptions = $fieldMetadata->getOptions();
 
-        if ($fieldOptions) {
-            $knownOptions = ['comment', 'unsigned', 'fixed', 'default'];
-
-            foreach ($knownOptions as $knownOption) {
-                if (array_key_exists($knownOption, $fieldOptions)) {
-                    $options[$knownOption] = $fieldOptions[$knownOption];
-
-                    unset($fieldOptions[$knownOption]);
-                }
-            }
-
-            $options['customSchemaOptions'] = $fieldOptions;
-        }
+        // the 'default' option can be overwritten here
+        $options = $this->gatherColumnOptions($fieldOptions) + $options;
 
         if ($fieldMetadata->hasValueGenerator() && $fieldMetadata->getValueGenerator()->getType() === GeneratorType::IDENTITY && $classMetadata->getIdentifierFieldNames() === [$fieldName]) {
             $options['autoincrement'] = true;
@@ -529,7 +523,7 @@ class SchemaTool
             $foreignClass = $this->em->getClassMetadata($property->getTargetEntity());
 
             switch (true) {
-                case ($property instanceof ToOneAssociationMetadata):
+                case $property instanceof ToOneAssociationMetadata:
                     $primaryKeyColumns = []; // PK is unnecessary for this relation-type
 
                     $this->gatherRelationJoinColumns(
@@ -544,11 +538,11 @@ class SchemaTool
 
                     break;
 
-                case ($property instanceof OneToManyAssociationMetadata):
+                case $property instanceof OneToManyAssociationMetadata:
                     //... create join table, one-many through join table supported later
                     throw NotSupported::create();
 
-                case ($property instanceof ManyToManyAssociationMetadata):
+                case $property instanceof ManyToManyAssociationMetadata:
                     // create join table
                     $joinTable     = $property->getJoinTable();
                     $joinTableName = $joinTable->getQuotedQualifiedName($this->platform);
@@ -671,7 +665,7 @@ class SchemaTool
         $uniqueConstraints = [];
 
         foreach ($joinColumns as $joinColumn) {
-            list($definingClass, $referencedFieldName) = $this->getDefiningClass(
+            [$definingClass, $referencedFieldName] = $this->getDefiningClass(
                 $class,
                 $joinColumn->getReferencedColumnName()
             );
@@ -710,9 +704,7 @@ class SchemaTool
                     'columnDefinition' => $columnDef,
                 ];
 
-                if ($property->getOptions()) {
-                    $columnOptions['options'] = $property->getOptions();
-                }
+                $columnOptions += $this->gatherColumnOptions($property->getOptions());
 
                 switch ($columnType) {
                     case 'string':
@@ -776,6 +768,23 @@ class SchemaTool
     }
 
     /**
+     * @param mixed[] $mapping
+     *
+     * @return mixed[]
+     */
+    private function gatherColumnOptions(array $mapping) : array
+    {
+        if ($mapping === []) {
+            return [];
+        }
+
+        $options                        = array_intersect_key($mapping, array_flip(self::KNOWN_COLUMN_OPTIONS));
+        $options['customSchemaOptions'] = array_diff_key($mapping, $options);
+
+        return $options;
+    }
+
+    /**
      * Drops the database schema for the given classes.
      *
      * In any way when an exception is thrown it is suppressed since drop was
@@ -791,7 +800,7 @@ class SchemaTool
         foreach ($dropSchemaSql as $sql) {
             try {
                 $conn->executeQuery($sql);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // ignored
             }
         }
@@ -844,7 +853,7 @@ class SchemaTool
         foreach ($fullSchema->getTables() as $table) {
             if (! $schema->hasTable($table->getName())) {
                 foreach ($table->getForeignKeys() as $foreignKey) {
-                    /** @var $foreignKey \Doctrine\DBAL\Schema\ForeignKeyConstraint */
+                    /** @var $foreignKey ForeignKeyConstraint */
                     if ($schema->hasTable($foreignKey->getForeignTableName())) {
                         $visitor->acceptForeignKey($table, $foreignKey);
                     }

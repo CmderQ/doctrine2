@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Doctrine\ORM;
 
+use BadMethodCallException;
 use Doctrine\Common\EventManager;
 use Doctrine\Common\Persistence\Mapping\MappingException;
 use Doctrine\Common\Persistence\ObjectRepository;
@@ -16,6 +17,7 @@ use Doctrine\ORM\Exception\MismatchedEventManager;
 use Doctrine\ORM\Exception\MissingIdentifierField;
 use Doctrine\ORM\Exception\MissingMappingDriverImplementation;
 use Doctrine\ORM\Exception\UnrecognizedIdentifierFields;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\ClassMetadataFactory;
 use Doctrine\ORM\Proxy\Factory\ProxyFactory;
 use Doctrine\ORM\Proxy\Factory\StaticProxyFactory;
@@ -25,6 +27,9 @@ use Doctrine\ORM\Query\ResultSetMapping;
 use Doctrine\ORM\Repository\RepositoryFactory;
 use Doctrine\ORM\Utility\IdentifierFlattener;
 use Doctrine\ORM\Utility\StaticClassNameConverter;
+use InvalidArgumentException;
+use ReflectionException;
+use Throwable;
 use function array_keys;
 use function get_class;
 use function gettype;
@@ -143,7 +148,6 @@ final class EntityManager implements EntityManagerInterface
     /**
      * Creates a new EntityManager that operates on the given database connection
      * and uses the given Configuration and EventManager implementations.
-     *
      */
     protected function __construct(Connection $conn, Configuration $config, EventManager $eventManager)
     {
@@ -235,7 +239,7 @@ final class EntityManager implements EntityManagerInterface
             $this->conn->commit();
 
             return $return;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->close();
             $this->conn->rollBack();
 
@@ -273,8 +277,8 @@ final class EntityManager implements EntityManagerInterface
      *
      * @param string $className
      *
-     * @throws \ReflectionException
-     * @throws \InvalidArgumentException
+     * @throws ReflectionException
+     * @throws InvalidArgumentException
      * @throws MappingException
      */
     public function getClassMetadata($className) : Mapping\ClassMetadata
@@ -324,7 +328,7 @@ final class EntityManager implements EntityManagerInterface
      */
     public function merge($object)
     {
-        throw new \BadMethodCallException('@TODO method disabled - will be removed in 3.0 with a release of doctrine/common');
+        throw new BadMethodCallException('@TODO method disabled - will be removed in 3.0 with a release of doctrine/common');
     }
 
     /**
@@ -334,16 +338,13 @@ final class EntityManager implements EntityManagerInterface
      */
     public function detach($object)
     {
-        throw new \BadMethodCallException('@TODO method disabled - will be removed in 3.0 with a release of doctrine/common');
+        throw new BadMethodCallException('@TODO method disabled - will be removed in 3.0 with a release of doctrine/common');
     }
 
     /**
      * Flushes all changes to objects that have been queued up to now to the database.
      * This effectively synchronizes the in-memory state of managed objects with the
      * database.
-     *
-     * If an entity is explicitly passed to this method only this entity and
-     * the cascade-persist semantics + scheduled inserts/removals are synchronized.
      *
      * @throws OptimisticLockException If a version check on an entity that
      *         makes use of optimistic locking fails.
@@ -378,6 +379,10 @@ final class EntityManager implements EntityManagerInterface
     {
         $class     = $this->metadataFactory->getMetadataFor(ltrim($entityName, '\\'));
         $className = $class->getClassName();
+
+        if ($lockMode !== null) {
+            $this->checkLockRequirements($lockMode, $class);
+        }
 
         if (! is_array($id)) {
             if ($class->isIdentifierComposite()) {
@@ -441,24 +446,14 @@ final class EntityManager implements EntityManagerInterface
 
         switch (true) {
             case $lockMode === LockMode::OPTIMISTIC:
-                if (! $class->isVersioned()) {
-                    throw OptimisticLockException::notVersioned($className);
-                }
-
                 $entity = $persister->load($sortedId);
 
                 $unitOfWork->lock($entity, $lockMode, $lockVersion);
 
                 return $entity;
-
             case $lockMode === LockMode::PESSIMISTIC_READ:
             case $lockMode === LockMode::PESSIMISTIC_WRITE:
-                if (! $this->getConnection()->isTransactionActive()) {
-                    throw TransactionRequiredException::transactionRequired();
-                }
-
                 return $persister->load($sortedId, null, null, [], $lockMode);
-
             default:
                 return $persister->loadById($sortedId);
         }
@@ -512,7 +507,7 @@ final class EntityManager implements EntityManagerInterface
         // Check identity map first, if its already in there just return it.
         $entity = $this->unitOfWork->tryGetById($sortedId, $class->getRootClassName());
         if ($entity !== false) {
-            return ($entity instanceof $className) ? $entity : null;
+            return $entity instanceof $className ? $entity : null;
         }
 
         if ($class->getSubClasses()) {
@@ -574,7 +569,7 @@ final class EntityManager implements EntityManagerInterface
         // Check identity map first, if its already in there just return it.
         $entity = $this->unitOfWork->tryGetById($sortedId, $class->getRootClassName());
         if ($entity !== false) {
-            return ($entity instanceof $className) ? $entity : null;
+            return $entity instanceof $className ? $entity : null;
         }
 
         $persister = $this->unitOfWork->getEntityPersister($class->getClassName());
@@ -593,7 +588,6 @@ final class EntityManager implements EntityManagerInterface
      * by this EntityManager become detached.
      *
      * @param null $entityName Unused. @todo Remove from ObjectManager.
-     *
      */
     public function clear($entityName = null)
     {
@@ -776,19 +770,14 @@ final class EntityManager implements EntityManagerInterface
         switch ($hydrationMode) {
             case Query::HYDRATE_OBJECT:
                 return new Internal\Hydration\ObjectHydrator($this);
-
             case Query::HYDRATE_ARRAY:
                 return new Internal\Hydration\ArrayHydrator($this);
-
             case Query::HYDRATE_SCALAR:
                 return new Internal\Hydration\ScalarHydrator($this);
-
             case Query::HYDRATE_SINGLE_SCALAR:
                 return new Internal\Hydration\SingleScalarHydrator($this);
-
             case Query::HYDRATE_SIMPLEOBJECT:
                 return new Internal\Hydration\SimpleObjectHydrator($this);
-
             default:
                 $class = $this->config->getCustomHydrationMode($hydrationMode);
                 if ($class !== null) {
@@ -824,7 +813,7 @@ final class EntityManager implements EntityManagerInterface
      *
      * @return EntityManager The created EntityManager.
      *
-     * @throws \InvalidArgumentException
+     * @throws InvalidArgumentException
      * @throws ORMException
      */
     public static function create($connection, Configuration $config, ?EventManager $eventManager = null)
@@ -847,7 +836,7 @@ final class EntityManager implements EntityManagerInterface
      *
      * @return Connection
      *
-     * @throws \InvalidArgumentException
+     * @throws InvalidArgumentException
      * @throws ORMException
      */
     protected static function createConnection($connection, Configuration $config, ?EventManager $eventManager = null)
@@ -857,7 +846,7 @@ final class EntityManager implements EntityManagerInterface
         }
 
         if (! $connection instanceof Connection) {
-            throw new \InvalidArgumentException(
+            throw new InvalidArgumentException(
                 sprintf(
                     'Invalid $connection argument of type %s given%s.',
                     is_object($connection) ? get_class($connection) : gettype($connection),
@@ -899,5 +888,25 @@ final class EntityManager implements EntityManagerInterface
     public function hasFilters()
     {
         return $this->filterCollection !== null;
+    }
+
+    /**
+     * @throws OptimisticLockException
+     * @throws TransactionRequiredException
+     */
+    private function checkLockRequirements(int $lockMode, ClassMetadata $class) : void
+    {
+        switch ($lockMode) {
+            case LockMode::OPTIMISTIC:
+                if (! $class->isVersioned()) {
+                    throw OptimisticLockException::notVersioned($class->getClassName());
+                }
+                break;
+            case LockMode::PESSIMISTIC_READ:
+            case LockMode::PESSIMISTIC_WRITE:
+                if (! $this->getConnection()->isTransactionActive()) {
+                    throw TransactionRequiredException::transactionRequired();
+                }
+        }
     }
 }

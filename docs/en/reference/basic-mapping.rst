@@ -75,7 +75,7 @@ Marking our ``Message`` class as an entity for Doctrine is straightforward:
         /** @Entity */
         class Message
         {
-            //...
+            // ...
         }
 
     .. code-block:: xml
@@ -101,7 +101,7 @@ You can change this by configuring information about the table:
          */
         class Message
         {
-            //...
+            // ...
         }
 
     .. code-block:: xml
@@ -200,36 +200,48 @@ mapping from a PHP string to a SQL VARCHAR (or VARCHAR2 etc.
 depending on the RDBMS brand). Here is a quick overview of the
 built-in mapping types:
 
--  ``string``: Type that maps a SQL VARCHAR to a PHP string.
--  ``integer``: Type that maps a SQL INT to a PHP integer.
+-  ``string``: Type that maps an SQL VARCHAR to a PHP string.
+-  ``integer``: Type that maps an SQL INT to a PHP integer.
 -  ``smallint``: Type that maps a database SMALLINT to a PHP
    integer.
 -  ``bigint``: Type that maps a database BIGINT to a PHP string.
--  ``boolean``: Type that maps a SQL boolean or equivalent (TINYINT) to a PHP boolean.
--  ``decimal``: Type that maps a SQL DECIMAL to a PHP string.
--  ``date``: Type that maps a SQL DATETIME to a PHP DateTime
+-  ``boolean``: Type that maps an SQL boolean or equivalent (TINYINT) to a PHP boolean.
+-  ``decimal``: Type that maps an SQL DECIMAL to a PHP string.
+-  ``date``: Type that maps an SQL DATETIME to a PHP DateTime
    object.
--  ``time``: Type that maps a SQL TIME to a PHP DateTime object.
--  ``datetime``: Type that maps a SQL DATETIME/TIMESTAMP to a PHP
-   DateTime object.
--  ``datetimetz``: Type that maps a SQL DATETIME/TIMESTAMP to a PHP
-   DateTime object with timezone.
--  ``text``: Type that maps a SQL CLOB to a PHP string.
--  ``object``: Type that maps a SQL CLOB to a PHP object using
+-  ``date_immutable``: Type that maps an SQL DATETIME to a PHP DateTimeImmutable
+   object.
+-  ``time``: Type that maps an SQL TIME to a PHP DateTime object.
+-  ``time_immutable``: Type that maps an SQL TIME to a PHP DateTimeImmutable object.
+-  ``datetime``: Type that maps an SQL DATETIME/TIMESTAMP to a PHP DateTime
+   object with the current timezone.
+-  ``datetimetz``: Type that maps an SQL DATETIME/TIMESTAMP to a PHP DateTime
+   object with the timezone specified in the value from the database.
+-  ``datetime_immutable``: Type that maps an SQL DATETIME/TIMESTAMP to a PHP DateTimeImmutable
+   object with the current timezone.
+-  ``datetimetz_immutable``: Type that maps an SQL DATETIME/TIMESTAMP to a PHP DateTimeImmutable
+   object with the timezone specified in the value from the database.
+-  ``dateinterval``: Type that maps an interval to a PHP DateInterval object
+-  ``text``: Type that maps an SQL CLOB to a PHP string.
+-  ``object``: Type that maps an SQL CLOB to a PHP object using
    ``serialize()`` and ``unserialize()``
--  ``array``: Type that maps a SQL CLOB to a PHP array using
+-  ``array``: Type that maps an SQL CLOB to a PHP array using
    ``serialize()`` and ``unserialize()``
--  ``simple_array``: Type that maps a SQL CLOB to a PHP array using
+-  ``simple_array``: Type that maps an SQL CLOB to a one-dimensional PHP array using
    ``implode()`` and ``explode()``, with a comma as delimiter. *IMPORTANT*
    Only use this type if you are sure that your values cannot contain a ",".
--  ``json_array``: Type that maps a SQL CLOB to a PHP array using
-   ``json_encode()`` and ``json_decode()``
--  ``float``: Type that maps a SQL Float (Double Precision) to a
+-  ``json_array``: Type that maps an SQL CLOB to a PHP array using
+   ``json_encode()`` and ``json_decode()``. This one has been deprecated in favor
+   of ``json`` type.
+-  ``json``: Type that maps an SQL CLOB to a PHP array using
+   ``json_encode()`` and ``json_decode()``. An empty value is correctly represented as ``null``
+-  ``float``: Type that maps an SQL Float (Double Precision) to a
    PHP double. *IMPORTANT*: Works only with locale settings that use
    decimal points as separator.
 -  ``guid``: Type that maps a database GUID/UUID to a PHP string. Defaults to
    varchar but uses a specific type if the platform supports it.
--  ``blob``: Type that maps a SQL BLOB to a PHP resource stream
+-  ``blob``: Type that maps an SQL BLOB to a PHP resource stream
+-  ``binary``: Type that maps an SQL binary to a PHP resource stream
 
 A cookbook article shows how to define :doc:`your own custom mapping types
 <../cookbook/custom-mapping-types>`.
@@ -273,7 +285,7 @@ annotation.
              * @GeneratedValue
              */
             private $id;
-            //...
+            // ...
         }
 
     .. code-block:: xml
@@ -318,8 +330,6 @@ Here is the list of possible generation strategies:
    strategy does currently not provide full portability and is
    supported by the following platforms: MySQL/SQLite/SQL Anywhere
    (AUTO\_INCREMENT), MSSQL (IDENTITY) and PostgreSQL (SERIAL).
--  ``UUID``: Tells Doctrine to use the built-in Universally Unique Identifier
-   generator. This strategy provides full portability.
 -  ``TABLE``: Tells Doctrine to use a separate table for ID
    generation. This strategy provides full portability.
    ***This strategy is not yet implemented!***
@@ -350,7 +360,7 @@ besides specifying the sequence's name:
              * @SequenceGenerator(sequenceName="message_seq", initialValue=1, allocationSize=100)
              */
             protected $id = null;
-            //...
+            // ...
         }
 
     .. code-block:: xml

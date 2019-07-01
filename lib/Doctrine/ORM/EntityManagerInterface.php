@@ -14,6 +14,7 @@ use Doctrine\ORM\Query\FilterCollection;
 use Doctrine\ORM\Query\ResultSetMapping;
 use Doctrine\ORM\Utility\IdentifierFlattener;
 use ProxyManager\Proxy\GhostObjectInterface;
+use Throwable;
 
 /**
  * EntityManager interface
@@ -80,7 +81,7 @@ interface EntityManagerInterface extends ObjectManager
      *
      * @return mixed The value returned from the closure.
      *
-     * @throws \Throwable
+     * @throws Throwable
      */
     public function transactional(callable $func);
 
@@ -155,7 +156,9 @@ interface EntityManagerInterface extends ObjectManager
      * @param string $entityName The name of the entity type.
      * @param mixed  $identifier The entity identifier.
      *
-     * @return object The (partial) entity reference.
+     * @return object|null The (partial) entity reference.
+     *
+     * @throws ORMInvalidArgumentException
      */
     public function getPartialReference($entityName, $identifier);
 
@@ -218,7 +221,7 @@ interface EntityManagerInterface extends ObjectManager
      *
      * @deprecated
      *
-     * @param int $hydrationMode
+     * @param string|int $hydrationMode
      *
      * @return AbstractHydrator
      */
@@ -227,7 +230,7 @@ interface EntityManagerInterface extends ObjectManager
     /**
      * Create a new instance for the given hydration mode.
      *
-     * @param int $hydrationMode
+     * @param string|int $hydrationMode
      *
      * @return AbstractHydrator
      *
