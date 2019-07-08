@@ -216,7 +216,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
     {
         parent::setParent($parent);
 
-        foreach ($parent->getDeclaredPropertiesIterator() as $fieldName => $property) {
+        foreach ($parent->getPropertiesIterator() as $fieldName => $property) {
             $this->addInheritedProperty($property);
         }
 
@@ -296,8 +296,8 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
             $this->cache = clone $this->cache;
         }
 
-        foreach ($this->declaredProperties as $name => $property) {
-            $this->declaredProperties[$name] = clone $property;
+        foreach ($this->properties as $name => $property) {
+            $this->properties[$name] = clone $property;
         }
     }
 
@@ -331,7 +331,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
 
         // This metadata is always serialized/cached.
         $serialized = array_merge($serialized, [
-            'declaredProperties',
+            'properties',
             'fieldNames',
             //'embeddedClasses',
             'identifier',
@@ -403,7 +403,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
 
         $this->className = $this->reflectionClass->getName();
 
-        foreach ($this->declaredProperties as $property) {
+        foreach ($this->properties as $property) {
             /** @var Property $property */
             $property->wakeupReflection($reflectionService);
         }
@@ -458,7 +458,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
             throw MappingException::identifierRequired($this->className);
         }
 
-        $explicitlyGeneratedProperties = array_filter($this->declaredProperties, static function (Property $property) : bool {
+        $explicitlyGeneratedProperties = array_filter($this->properties, static function (Property $property) : bool {
             return $property instanceof FieldMetadata
                 && $property->isPrimaryKey()
                 && $property->hasValueGenerator();
@@ -488,7 +488,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
                     throw MappingException::invalidTargetEntityClass($targetEntity, $this->className, $property->getName());
                 }
             },
-            $this->declaredProperties
+            $this->properties
         );
     }
 
@@ -615,11 +615,6 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
         $fieldName = $property->getName();
 
         if ($property->isOwningSide()) {
-            if (empty($property->getJoinColumns())) {
-                // Apply default join column
-                $property->addJoinColumn(new JoinColumnMetadata());
-            }
-
             $uniqueConstraintColumns = [];
 
             foreach ($property->getJoinColumns() as $joinColumn) {
@@ -632,16 +627,6 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
                     } else {
                         $uniqueConstraintColumns[] = $joinColumn->getColumnName();
                     }
-                }
-
-                $joinColumn->setTableName(! $this->isMappedSuperclass ? $this->getTableName() : null);
-
-                if (! $joinColumn->getColumnName()) {
-                    $joinColumn->setColumnName($this->namingStrategy->joinColumnName($fieldName, $this->className));
-                }
-
-                if (! $joinColumn->getReferencedColumnName()) {
-                    $joinColumn->setReferencedColumnName($this->namingStrategy->referenceColumnName());
                 }
 
                 $this->fieldNames[$joinColumn->getColumnName()] = $fieldName;
@@ -685,43 +670,6 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
     }
 
     /**
-     * Validates & completes a to-many association mapping.
-     *
-     * @param ToManyAssociationMetadata $property The association mapping to validate & complete.
-     *
-     * @throws MappingException
-     */
-    protected function validateAndCompleteToManyAssociationMetadata(ToManyAssociationMetadata $property)
-    {
-        // Do nothing
-    }
-
-    /**
-     * Validates & completes a one-to-one association mapping.
-     *
-     * @param OneToOneAssociationMetadata $property The association mapping to validate & complete.
-     */
-    protected function validateAndCompleteOneToOneMapping(OneToOneAssociationMetadata $property)
-    {
-        // Do nothing
-    }
-
-    /**
-     * Validates & completes a many-to-one association mapping.
-     *
-     * @param ManyToOneAssociationMetadata $property The association mapping to validate & complete.
-     *
-     * @throws MappingException
-     */
-    protected function validateAndCompleteManyToOneMapping(ManyToOneAssociationMetadata $property)
-    {
-        // A many-to-one mapping is essentially a one-one backreference
-        if ($property->isOrphanRemoval()) {
-            throw MappingException::illegalOrphanRemoval($this->className, $property->getName());
-        }
-    }
-
-    /**
      * Validates & completes a one-to-many association mapping.
      *
      * @param OneToManyAssociationMetadata $property The association mapping to validate & complete.
@@ -742,97 +690,6 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
                 $cascades[] = 'remove';
 
                 $property->setCascade($cascades);
-            }
-        }
-    }
-
-    /**
-     * Validates & completes a many-to-many association mapping.
-     *
-     * @param ManyToManyAssociationMetadata $property The association mapping to validate & complete.
-     *
-     * @throws MappingException
-     */
-    protected function validateAndCompleteManyToManyMapping(ManyToManyAssociationMetadata $property)
-    {
-        if ($property->isOwningSide()) {
-            // owning side MUST have a join table
-            $joinTable = $property->getJoinTable() ?: new JoinTableMetadata();
-
-            $property->setJoinTable($joinTable);
-
-            if (! $joinTable->getName()) {
-                $joinTableName = $this->namingStrategy->joinTableName(
-                    $property->getSourceEntity(),
-                    $property->getTargetEntity(),
-                    $property->getName()
-                );
-
-                $joinTable->setName($joinTableName);
-            }
-
-            $selfReferencingEntityWithoutJoinColumns = $property->getSourceEntity() === $property->getTargetEntity() && ! $joinTable->hasColumns();
-
-            if (! $joinTable->getJoinColumns()) {
-                $referencedColumnName = $this->namingStrategy->referenceColumnName();
-                $sourceReferenceName  = $selfReferencingEntityWithoutJoinColumns ? 'source' : $referencedColumnName;
-                $columnName           = $this->namingStrategy->joinKeyColumnName($property->getSourceEntity(), $sourceReferenceName);
-                $joinColumn           = new JoinColumnMetadata();
-
-                $joinColumn->setColumnName($columnName);
-                $joinColumn->setReferencedColumnName($referencedColumnName);
-                $joinColumn->setOnDelete('CASCADE');
-
-                $joinTable->addJoinColumn($joinColumn);
-            }
-
-            if (! $joinTable->getInverseJoinColumns()) {
-                $referencedColumnName = $this->namingStrategy->referenceColumnName();
-                $targetReferenceName  = $selfReferencingEntityWithoutJoinColumns ? 'target' : $referencedColumnName;
-                $columnName           = $this->namingStrategy->joinKeyColumnName($property->getTargetEntity(), $targetReferenceName);
-                $joinColumn           = new JoinColumnMetadata();
-
-                $joinColumn->setColumnName($columnName);
-                $joinColumn->setReferencedColumnName($referencedColumnName);
-                $joinColumn->setOnDelete('CASCADE');
-
-                $joinTable->addInverseJoinColumn($joinColumn);
-            }
-
-            foreach ($joinTable->getJoinColumns() as $joinColumn) {
-                /** @var JoinColumnMetadata $joinColumn */
-                if (! $joinColumn->getReferencedColumnName()) {
-                    $joinColumn->setReferencedColumnName($this->namingStrategy->referenceColumnName());
-                }
-
-                $referencedColumnName = $joinColumn->getReferencedColumnName();
-
-                if (! $joinColumn->getColumnName()) {
-                    $columnName = $this->namingStrategy->joinKeyColumnName(
-                        $property->getSourceEntity(),
-                        $referencedColumnName
-                    );
-
-                    $joinColumn->setColumnName($columnName);
-                }
-            }
-
-            foreach ($joinTable->getInverseJoinColumns() as $inverseJoinColumn) {
-                /** @var JoinColumnMetadata $inverseJoinColumn */
-                if (! $inverseJoinColumn->getReferencedColumnName()) {
-                    $inverseJoinColumn->setReferencedColumnName($this->namingStrategy->referenceColumnName());
-                }
-
-                $referencedColumnName = $inverseJoinColumn->getReferencedColumnName();
-
-                if (! $inverseJoinColumn->getColumnName()) {
-                    $columnName = $this->namingStrategy->joinKeyColumnName(
-                        $property->getTargetEntity(),
-                        $referencedColumnName
-                    );
-
-                    $inverseJoinColumn->setColumnName($columnName);
-                }
             }
         }
     }
@@ -891,8 +748,8 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
      */
     public function hasField($fieldName)
     {
-        return isset($this->declaredProperties[$fieldName])
-            && $this->declaredProperties[$fieldName] instanceof FieldMetadata;
+        return isset($this->properties[$fieldName])
+            && $this->properties[$fieldName] instanceof FieldMetadata;
     }
 
     /**
@@ -1021,7 +878,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
     {
         $fieldName = $property->getName();
 
-        if (! isset($this->declaredProperties[$fieldName])) {
+        if (! isset($this->properties[$fieldName])) {
             throw MappingException::invalidOverrideFieldName($this->className, $fieldName);
         }
 
@@ -1030,7 +887,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
 
         // If moving from transient to persistent, assume it's a new property
         if ($originalPropertyClassName === TransientMetadata::class) {
-            unset($this->declaredProperties[$fieldName]);
+            unset($this->properties[$fieldName]);
 
             $this->addProperty($property);
 
@@ -1047,7 +904,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
             throw MappingException::invalidOverrideVersionField($this->className, $fieldName);
         }
 
-        unset($this->declaredProperties[$fieldName]);
+        unset($this->properties[$fieldName]);
 
         if ($property instanceof FieldMetadata) {
             // Unset defined fieldName prior to override
@@ -1104,7 +961,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
      */
     public function isInheritedProperty($fieldName)
     {
-        $declaringClass = $this->declaredProperties[$fieldName]->getDeclaringClass();
+        $declaringClass = $this->properties[$fieldName]->getDeclaringClass();
 
         return $declaringClass->className !== $this->className;
     }
@@ -1116,8 +973,22 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
     {
         $this->table = $table;
 
-        if (empty($table->getName())) {
-            $table->setName($this->namingStrategy->classToTableName($this->className));
+        // Make sure inherited and declared properties reflect newly defined table
+        foreach ($this->properties as $property) {
+            switch (true) {
+                case $property instanceof FieldMetadata:
+                    $property->setTableName($property->getTableName() ?? $table->getName());
+                    break;
+
+                case $property instanceof ToOneAssociationMetadata:
+                    // Resolve association join column table names
+                    foreach ($property->getJoinColumns() as $joinColumn) {
+                        /** @var JoinColumnMetadata $joinColumn */
+                        $joinColumn->setTableName($joinColumn->getTableName() ?? $table->getName());
+                    }
+
+                    break;
+            }
         }
     }
 
@@ -1138,7 +1009,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
 
     public function getColumn(string $columnName) : ?LocalColumnMetadata
     {
-        foreach ($this->declaredProperties as $property) {
+        foreach ($this->properties as $property) {
             if ($property instanceof LocalColumnMetadata && $property->getColumnName() === $columnName) {
                 return $property;
             }
@@ -1155,7 +1026,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
      * @throws CacheException
      * @throws ReflectionException
      */
-    public function addProperty(Property $property)
+    public function addProperty(Property $property) : void
     {
         $fieldName = $property->getName();
 
@@ -1181,25 +1052,20 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
             case $property instanceof OneToOneAssociationMetadata:
                 $this->validateAndCompleteAssociationMapping($property);
                 $this->validateAndCompleteToOneAssociationMetadata($property);
-                $this->validateAndCompleteOneToOneMapping($property);
                 break;
 
             case $property instanceof OneToManyAssociationMetadata:
                 $this->validateAndCompleteAssociationMapping($property);
-                $this->validateAndCompleteToManyAssociationMetadata($property);
                 $this->validateAndCompleteOneToManyMapping($property);
                 break;
 
             case $property instanceof ManyToOneAssociationMetadata:
                 $this->validateAndCompleteAssociationMapping($property);
                 $this->validateAndCompleteToOneAssociationMetadata($property);
-                $this->validateAndCompleteManyToOneMapping($property);
                 break;
 
             case $property instanceof ManyToManyAssociationMetadata:
                 $this->validateAndCompleteAssociationMapping($property);
-                $this->validateAndCompleteToManyAssociationMetadata($property);
-                $this->validateAndCompleteManyToManyMapping($property);
                 break;
 
             default:
@@ -1211,7 +1077,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
             $this->identifier[] = $fieldName;
         }
 
-        $this->addDeclaredProperty($property);
+        parent::addProperty($property);
     }
 
     /**
@@ -1221,7 +1087,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
      */
     public function addInheritedProperty(Property $property)
     {
-        if (isset($this->declaredProperties[$property->getName()])) {
+        if (isset($this->properties[$property->getName()])) {
             throw MappingException::duplicateProperty($this->className, $this->getProperty($property->getName()));
         }
 
@@ -1252,7 +1118,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
             }
         }
 
-        $this->declaredProperties[$property->getName()] = $inheritedProperty;
+        $this->properties[$property->getName()] = $inheritedProperty;
     }
 
     /**
@@ -1449,7 +1315,7 @@ class ClassMetadata extends ComponentMetadata implements TableOwner
      */
     public function mapEmbedded(array $mapping) : void
     {
-        /*if (isset($this->declaredProperties[$mapping['fieldName']])) {
+        /*if (isset($this->properties[$mapping['fieldName']])) {
             throw MappingException::duplicateProperty($this->className, $this->getProperty($mapping['fieldName']));
         }
 
